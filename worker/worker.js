@@ -852,7 +852,14 @@ export default {
       const key = path.slice("/blobs/".length).split("/").map(decodeURIComponent).join("/");
       const row = await firstRow(env, "SELECT mime, data FROM blobs WHERE key = ?", [key]);
       if (!row) return new Response("Not found", { status: 404 });
-      return new Response(row.data, {
+      // D1 hands BLOB values back as an array of byte numbers; passing
+      // that straight to Response would stringify it, so rebuild bytes.
+      const bytes = Array.isArray(row.data)
+        ? Uint8Array.from(row.data)
+        : row.data instanceof ArrayBuffer
+          ? new Uint8Array(row.data)
+          : new TextEncoder().encode(String(row.data));
+      return new Response(bytes, {
         headers: { "content-type": row.mime, "cache-control": "private, max-age=3600" },
       });
     }
