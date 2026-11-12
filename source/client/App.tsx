@@ -1307,28 +1307,33 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse, p
   );
 }
 
-/* ---------- pick a place: county, district, town, community ----------
-   The address at sign-up is picked step by step, one level per
-   screen, the normal way: first the county, then the district
-   inside it, then the town inside that, then the community when
-   the town has real ones. Every screen shows its level's FULL
-   list from the real place data in places.ts, with a search box
-   at the top that filters only that level's list as the person
-   types; scrolling the full list and searching both work. There
-   is no single global place search and no blank field for a
-   place: the saved place is always the full real record the
-   person tapped, with its coordinates. Then the one short house
-   description. Used at sign-up and in Profile. */
+/* ---------- pick a place: one search, type your place ----------
+   The address at sign-up is found on ONE search screen: the
+   person types their place and real places from places.ts come
+   up as they type, counties, districts, towns and communities
+   together. (The stepped lists, county then district then town
+   then community, came first; the owner's mother asked for
+   typing instead of the long lists, and the owner ordered this
+   on 2026-11-12.) Matching is forgiving on purpose: results
+   start from two letters, the spelling does not have to be
+   right, and names are matched by how they sound too, because a
+   person may spell a hard name the way it is pronounced. What
+   is saved is always the full real record the person tapped,
+   with its coordinates; the typed words are never saved as a
+   place. A county or district result narrows this same screen
+   to the places inside it, because a saved place still needs
+   its town. Then the one short house description. Used at
+   sign-up and in Profile. */
 export type PickedPlace = { county: string; district: string; city: string; community: string | null; house: string; lat: number | null; lng: number | null };
 
 /* One pickable place: a real record from places.ts. A town pick
    carries the town's surveyed coordinates. A community pick
    carries its town's coordinates, because the community sources
    name the communities but the pick is held exactly like the
-   Greater Monrovia ones, on the town's surveyed point; the two
+   Greater Monrovia ones, on the town's surveyed point; the
    community towns with no surveyed point at all (Garwolon,
-   Johnsonville) keep null coordinates and simply get no
-   distance, never an invented one. */
+   Johnsonville, Brewerville) keep null coordinates and simply
+   get no distance, never an invented one. */
 type PlaceEntry = { county: string; district: string; city: string; community: string | null; lat: number | null; lng: number | null };
 
 const TOWN_ENTRY_BY_KEY = new Map<string, PlaceEntry>();
@@ -1340,20 +1345,213 @@ for (const t of PLACE_TOWNS) {
   PLACE_ENTRIES.push(e);
   TOWN_ENTRY_BY_KEY.set(`${county}|${d[1]}|${t[1]}`, e);
 }
-const COMMUNITIES_BY_TOWN = new Map<string, PlaceEntry[]>();
 for (const [county, district, town, community] of PLACE_COMMUNITIES) {
   const townEntry = TOWN_ENTRY_BY_KEY.get(`${county}|${district}|${town}`);
   const e: PlaceEntry = { county, district, city: town, community, lat: townEntry?.lat ?? null, lng: townEntry?.lng ?? null };
   PLACE_ENTRIES.push(e);
-  const key = `${county}|${district}|${town}`;
-  const list = COMMUNITIES_BY_TOWN.get(key) ?? [];
-  list.push(e);
-  COMMUNITIES_BY_TOWN.set(key, list);
 }
-function communitiesOfTown(e: PlaceEntry): PlaceEntry[] {
-  if (e.community) return [];
-  return COMMUNITIES_BY_TOWN.get(`${e.county}|${e.district}|${e.city}`) ?? [];
+
+/* ---------- forgiving place search: spelling and sound ----------
+   PLACE-SEARCH-BEGIN (the test harness lifts this section out
+   and runs it against the real place data) */
+
+/* The name with spaces removed and doubled letters collapsed,
+   so "Red Light" and "redlight" are the same string. */
+function squashPlaceName(s: string): string {
+  return norm(s).replace(/ /g, "").replace(/(.)\1+/g, "$1");
 }
+
+/* Sound key for one word, soundex style. Common sound swaps are
+   folded first (ph sounds like f, c like k, s like z, qu like
+   kw), doubled letters collapse, and the letters are then
+   grouped by the sound they make. A name spelled the way it is
+   pronounced lands on the same key as the real spelling:
+   "pensville" and "Paynesville" share a key, and so do
+   "montserado" and "Montserrado". */
+function placeSoundKey(word: string): string {
+  let w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (!w) return "";
+  w = w
+    .replace(/ph/g, "f")
+    .replace(/qu/g, "kw")
+    .replace(/ck/g, "k")
+    .replace(/x/g, "ks")
+    .replace(/gh/g, "")
+    .replace(/c/g, "k")
+    .replace(/z/g, "s")
+    .replace(/(.)\1+/g, "$1");
+  const code = (ch: string): string => {
+    if ("bfpv".includes(ch)) return "1";
+    if ("kgsjx".includes(ch)) return "2";
+    if ("dt".includes(ch)) return "3";
+    if (ch === "l") return "4";
+    if ("mn".includes(ch)) return "5";
+    if (ch === "r") return "6";
+    return "0";
+  };
+  let key = code(w[0]!);
+  let prev = key;
+  for (let i = 1; i < w.length && key.length < 4; i++) {
+    const c = code(w[i]!);
+    if (c !== "0" && c !== prev) key += c;
+    if (c !== "0") prev = c;
+  }
+  return key.padEnd(4, "0");
+}
+
+/* One searchable thing: a town or community (a saveable place),
+   or a county or district (an area result, which narrows the
+   screen to the places inside it). The words of the name itself
+   and the words of the rest of its path are precomputed once,
+   with their sound keys, so typing stays fast. */
+type PlaceSearchItem = {
+  label: string;
+  sub: string;
+  aria: string;
+  entry: PlaceEntry | null;
+  isArea: boolean;
+  areaCounty: string;
+  areaDistrict: string | null;
+  words: string[];
+  phonWords: string[];
+  pathWords: string[];
+  phonPathWords: string[];
+  squash: string;
+  sqPhon: string;
+};
+
+function makePlaceSearchItem(
+  label: string,
+  sub: string,
+  aria: string,
+  entry: PlaceEntry | null,
+  isArea: boolean,
+  areaCounty: string,
+  areaDistrict: string | null,
+  pathText: string,
+): PlaceSearchItem {
+  const words = norm(label).split(" ").filter(Boolean);
+  const pathWords = norm(pathText).split(" ").filter(Boolean);
+  const squash = squashPlaceName(label);
+  return {
+    label,
+    sub,
+    aria,
+    entry,
+    isArea,
+    areaCounty,
+    areaDistrict,
+    words,
+    phonWords: words.map(placeSoundKey),
+    pathWords,
+    phonPathWords: pathWords.map(placeSoundKey),
+    squash,
+    sqPhon: placeSoundKey(squash),
+  };
+}
+
+const PLACE_SEARCH_INDEX: PlaceSearchItem[] = [];
+for (const c of PLACE_COUNTIES) {
+  PLACE_SEARCH_INDEX.push(makePlaceSearchItem(c, "County", `Pick ${c} county`, null, true, c, null, ""));
+}
+for (const d of PLACE_DISTRICTS) {
+  const c = PLACE_COUNTIES[d[0]]!;
+  PLACE_SEARCH_INDEX.push(makePlaceSearchItem(d[1], `District, ${c}`, `Pick ${d[1]} district, ${c}`, null, true, c, d[1], c));
+}
+for (const e of PLACE_ENTRIES) {
+  if (e.community) {
+    PLACE_SEARCH_INDEX.push(
+      makePlaceSearchItem(e.community, `${e.city}, ${e.county}`, `Pick ${e.community}, ${e.city}, ${e.county}`, e, false, e.county, e.district, `${e.city} ${e.district} ${e.county}`),
+    );
+  } else {
+    PLACE_SEARCH_INDEX.push(
+      makePlaceSearchItem(e.city, `${e.district}, ${e.county}`, `Pick ${e.city}, ${e.district}, ${e.county}`, e, false, e.county, e.district, `${e.district} ${e.county}`),
+    );
+  }
+}
+
+/* How well one typed word matches one real word. Lower is
+   better, -1 is no match: exact first, then a word that starts
+   with the typed letters (so two letters are enough), then the
+   same sound, then a word that contains the letters, then a
+   near miss of one or two letters. */
+function placeWordScore(q: string, qPhon: string, word: string, phon: string): number {
+  if (word === q) return 0;
+  if (word.startsWith(q)) return 1;
+  if (phon !== "" && phon === qPhon) return 2;
+  if (q.length >= 3 && word.includes(q)) return 3;
+  if (q.length >= 4) {
+    const maxD = q.length >= 7 ? 2 : 1;
+    if (Math.abs(word.length - q.length) <= maxD && editDistance(q, word) <= maxD) return 4;
+  }
+  return -1;
+}
+
+/* Search the whole place data at once. Results start at two
+   letters typed. Whole-name matches (exact, starting with, or
+   sounding the same) come before word by word matches, and
+   matches on the name itself come before matches that only hit
+   the path around it. Best matches first, capped short. */
+function searchPlaces(query: string, area: { county: string; district: string | null } | null): PlaceSearchItem[] {
+  const sq = squashPlaceName(query);
+  if (sq.length < 2) return [];
+  const tokens = norm(query).split(" ").filter(Boolean);
+  const sqPhon = placeSoundKey(sq);
+  const scored: { item: PlaceSearchItem; score: number }[] = [];
+  for (const item of PLACE_SEARCH_INDEX) {
+    if (area) {
+      if (item.isArea) continue;
+      if (item.areaCounty !== area.county) continue;
+      if (area.district && item.areaDistrict !== area.district) continue;
+    }
+    let score: number | null = null;
+    if (item.squash === sq) score = 0;
+    else if (item.squash.startsWith(sq)) score = 1;
+    else if (item.sqPhon !== "" && item.sqPhon === sqPhon) score = 2;
+    if (score === null && tokens.length > 0) {
+      let total = 0;
+      let ok = true;
+      for (const t of tokens) {
+        const tPhon = placeSoundKey(t);
+        let best = -1;
+        for (let i = 0; i < item.words.length; i++) {
+          const s = placeWordScore(t, tPhon, item.words[i]!, item.phonWords[i]!);
+          if (s >= 0 && (best < 0 || s < best)) best = s;
+        }
+        if (best < 0) {
+          for (let i = 0; i < item.pathWords.length; i++) {
+            const s = placeWordScore(t, tPhon, item.pathWords[i]!, item.phonPathWords[i]!);
+            if (s >= 0 && (best < 0 || s + 5 < best)) best = s + 5;
+          }
+        }
+        if (best < 0) {
+          ok = false;
+          break;
+        }
+        total += best;
+      }
+      if (ok) score = 10 + total;
+    }
+    if (score !== null) scored.push({ item, score });
+  }
+  /* At the same score, a county or district comes before the
+     places inside it, and the name closest to what was typed
+     comes first: sound keys collide (many short names sound
+     alike), so closeness keeps the real place ahead of a short
+     name that merely sounds similar. */
+  const ranked = scored.map((s) => ({ ...s, dist: editDistance(sq, s.item.squash) }));
+  ranked.sort(
+    (a, b) =>
+      a.score - b.score ||
+      (a.item.isArea === b.item.isArea ? 0 : a.item.isArea ? -1 : 1) ||
+      a.dist - b.dist ||
+      a.item.label.length - b.item.label.length ||
+      a.item.label.localeCompare(b.item.label) ||
+      a.item.sub.localeCompare(b.item.sub),
+  );
+  return ranked.slice(0, 12).map((s) => s.item);
+}
+/* PLACE-SEARCH-END */
 
 /* Coordinates for a place saved before the real data loaded:
    match its saved words against the real records by exact name —
@@ -1395,57 +1593,16 @@ function PlacePicker({
   onDone: (place: PickedPlace) => void;
   onBack: () => void;
 }) {
-  const [stage, setStage] = useState<"county" | "district" | "town" | "community" | "house">("county");
-  const [countyQ, setCountyQ] = useState("");
-  const [districtQ, setDistrictQ] = useState("");
-  const [townQ, setTownQ] = useState("");
-  const [communityQ, setCommunityQ] = useState("");
-  const [county, setCounty] = useState<string | null>(null);
-  const [district, setDistrict] = useState<string | null>(null);
-  const [town, setTown] = useState<PlaceEntry | null>(null);
+  const [stage, setStage] = useState<"search" | "house">("search");
+  const [query, setQuery] = useState("");
+  const [area, setArea] = useState<{ county: string; district: string | null; label: string; sub: string } | null>(null);
   const [picked, setPicked] = useState<PlaceEntry | null>(null);
   const [house, setHouse] = useState(initial?.house ?? "");
 
   const finish = (e: PlaceEntry, houseText: string) =>
     onDone({ county: e.county, district: e.district, city: e.city, community: e.community, house: houseText, lat: e.lat, lng: e.lng });
   const placeWords = picked ? (picked.community ? `${picked.community}, ${picked.city}` : `${picked.city}, ${picked.county}`) : "";
-
-  /* Each level's list comes only from the level above it, and each
-     level's search box filters only its own list. */
-  const countyList = useMemo(
-    () => PLACE_COUNTIES.filter((c) => norm(c).includes(norm(countyQ))),
-    [countyQ],
-  );
-  const districtList = useMemo(() => {
-    if (!county) return [];
-    const ci = PLACE_COUNTIES.indexOf(county);
-    return PLACE_DISTRICTS
-      .filter((d) => d[0] === ci)
-      .map((d) => d[1])
-      .filter((name) => norm(name).includes(norm(districtQ)))
-      .sort((a, b) => a.localeCompare(b));
-  }, [county, districtQ]);
-  const townList = useMemo(() => {
-    if (!county || !district) return [];
-    return PLACE_ENTRIES
-      .filter((e) => !e.community && e.county === county && e.district === district && norm(e.city).includes(norm(townQ)))
-      .sort((a, b) => a.city.localeCompare(b.city));
-  }, [county, district, townQ]);
-  const townCommunities = useMemo(() => (town ? communitiesOfTown(town) : []), [town]);
-  const communityList = useMemo(
-    () => townCommunities.filter((e) => norm(e.community ?? "").includes(norm(communityQ))),
-    [townCommunities, communityQ],
-  );
-
-  const searchBox = (id: string, label: string, value: string, setValue: (v: string) => void) => (
-    <div className="relative mx-auto mb-4 w-full max-w-[300px]">
-      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--dim)]" aria-hidden="true">
-        <ServiceIcon icon="search" size={22} />
-      </span>
-      <label className="sr-only" htmlFor={id}>{label}</label>
-      <input id={id} value={value} onChange={(e) => setValue(e.target.value)} placeholder={label} className={bigInputCls} style={{ paddingLeft: "3rem" }} autoComplete="off" />
-    </div>
-  );
+  const results = useMemo(() => searchPlaces(query, area), [query, area]);
   const noMatch = (
     <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">Nothing matches that search.</p>
   );
@@ -1457,7 +1614,7 @@ function PlacePicker({
        the profile automatically; the worker sees it on the job
        together with the call number. */
     return (
-      <Screen title="How do we get to your house?" onBack={() => setStage(townCommunities.length > 0 ? "community" : "town")}>
+      <Screen title="How do we get to your house?" onBack={() => setStage("search")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1478,123 +1635,54 @@ function PlacePicker({
     );
   }
 
-  /* Community, ONLY when the picked town has real named
-     communities in the data (today the Greater Monrovia towns):
-     the town itself first, then its full community list. Towns
-     with no communities in any real source never see this screen:
-     the town pick already completed the place. */
-  if (stage === "community" && town) {
-    return (
-      <Screen title={town.city} onBack={() => setStage("town")} layout="top">
-        {searchBox("pk-community-search", "Search your community", communityQ, setCommunityQ)}
-        <div className="flex flex-col gap-2.5">
-          <PickRow
-            label={town.city}
-            sub={`${town.district}, ${town.county}`}
-            selected={picked === town}
-            onClick={() => { setPicked(town); setStage("house"); }}
-            ariaLabel={`Pick ${town.city} itself, no community`}
-          />
-          {communityList.map((e) => (
-            <PickRow
-              key={`${e.community}|${e.city}`}
-              label={e.community!}
-              sub={`${e.city}, ${e.county}`}
-              selected={picked === e}
-              onClick={() => { setPicked(e); setStage("house"); }}
-              ariaLabel={`Pick ${e.community}, ${e.city}, ${e.county}`}
-            />
-          ))}
-          {communityQ.trim() !== "" && communityList.length === 0 && noMatch}
-        </div>
-      </Screen>
-    );
-  }
-
-  if (stage === "town" && county && district) {
-    return (
-      <Screen title="What town or city do you live in?" onBack={() => setStage("district")} layout="top">
-        {searchBox("pk-town-search", "Search your town", townQ, setTownQ)}
-        <div className="flex flex-col gap-2.5">
-          {townList.map((e) => (
-            <PickRow
-              key={`${e.city}|${e.district}|${e.county}`}
-              label={e.city}
-              sub={`${e.district}, ${e.county}`}
-              selected={town === e}
-              onClick={() => {
-                setTown(e);
-                if (communitiesOfTown(e).length > 0) {
-                  setPicked(null);
-                  setStage("community");
-                } else {
-                  setPicked(e);
-                  setStage("house");
-                }
-              }}
-              ariaLabel={`Pick ${e.city}, ${e.district}, ${e.county}`}
-            />
-          ))}
-          {townList.length === 0 && noMatch}
-        </div>
-      </Screen>
-    );
-  }
-
-  if (stage === "district" && county) {
-    return (
-      <Screen title="What district do you live in?" onBack={() => setStage("county")} layout="top">
-        {searchBox("pk-district-search", "Search your district", districtQ, setDistrictQ)}
-        <div className="flex flex-col gap-2.5">
-          {districtList.map((name) => (
-            <PickRow
-              key={name}
-              label={name}
-              sub={county}
-              selected={district === name}
-              onClick={() => { setDistrict(name); setTown(null); setPicked(null); setStage("town"); }}
-              ariaLabel={`Pick ${name} district, ${county}`}
-            />
-          ))}
-          {districtList.length === 0 && noMatch}
-        </div>
-      </Screen>
-    );
-  }
-
-  /* County: the full list of the 15 counties in ABC order,
-     scrollable, with its own search box at the top. Montserrado,
-     the most used county, is ALSO pinned as the head item at the
-     very top of the list, and still appears again in its normal
-     ABC position below. Both rows are the same pick. The pin
-     shows on the full list; while searching, the search filters
-     the whole county list the normal way. */
+  /* One search screen: type your place, and real places come up
+     as you type, starting from two letters, with bad spelling
+     and spelling by sound forgiven. Tapping a town or community
+     picks that real record. Tapping a county or district keeps
+     this same screen and narrows it to the places inside, shown
+     as the picked row on top; tapping that row clears it. */
   return (
-    <Screen title="What county do you live in?" onBack={onBack} layout="top">
+    <Screen title="Where do you live?" onBack={onBack} layout="top">
       {initial?.city && (
         <p className="mb-3 text-center text-base font-semibold text-[var(--dim)]">Now: {initial.community ? `${initial.community}, ` : ""}{initial.city ?? ""}, {initial.county ?? ""}</p>
       )}
-      {searchBox("pk-county-search", "Search your county", countyQ, setCountyQ)}
-      <div className="flex flex-col gap-2.5">
-        {countyQ.trim() === "" && PLACE_COUNTIES.includes("Montserrado") && (
+      <div className="relative mx-auto mb-4 w-full max-w-[300px]">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--dim)]" aria-hidden="true">
+          <ServiceIcon icon="search" size={22} />
+        </span>
+        <label className="sr-only" htmlFor="pk-place-search">Type your place</label>
+        <input id="pk-place-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Type your place" className={bigInputCls} style={{ paddingLeft: "3rem" }} autoComplete="off" />
+      </div>
+      {area && (
+        <div className="mb-3">
           <PickRow
-            key="pinned-Montserrado"
-            label="Montserrado"
-            selected={county === "Montserrado"}
-            onClick={() => { setCounty("Montserrado"); setDistrict(null); setTown(null); setPicked(null); setStage("district"); }}
-            ariaLabel="Pick Montserrado county"
+            label={area.label}
+            sub={area.sub}
+            selected
+            onClick={() => setArea(null)}
+            ariaLabel={`Clear ${area.label}`}
           />
-        )}
-        {countyList.map((c) => (
+        </div>
+      )}
+      <div className="flex flex-col gap-2.5">
+        {results.map((item) => (
           <PickRow
-            key={c}
-            label={c}
-            selected={county === c}
-            onClick={() => { setCounty(c); setDistrict(null); setTown(null); setPicked(null); setStage("district"); }}
-            ariaLabel={`Pick ${c} county`}
+            key={`${item.isArea ? "area" : "place"}|${item.label}|${item.sub}`}
+            label={item.label}
+            sub={item.sub}
+            onClick={() => {
+              if (item.isArea) {
+                setArea({ county: item.areaCounty, district: item.areaDistrict, label: item.label, sub: item.sub });
+                setQuery("");
+              } else if (item.entry) {
+                setPicked(item.entry);
+                setStage("house");
+              }
+            }}
+            ariaLabel={item.aria}
           />
         ))}
-        {countyList.length === 0 && noMatch}
+        {squashPlaceName(query).length >= 2 && results.length === 0 && noMatch}
       </div>
     </Screen>
   );
@@ -1603,8 +1691,8 @@ function PlacePicker({
 
 /* ================================================================
    SIGN IN — name, then phone, then code. One thing per screen.
-   A new person then says where they live with the stepped
-   county, district, town, and community picks, and one short
+   A new person then says where they live with one place
+   search, and one short
    house description. The phone number is
    the account and never changes after this.
    ================================================================ */
