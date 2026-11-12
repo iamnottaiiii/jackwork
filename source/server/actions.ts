@@ -147,6 +147,20 @@ const SMS_PROVIDER = "";
 const SMS_API_KEY = "";
 const SMS_SENDER_ID = "";
 
+/* Masked calls: on the same waiting-for-a-line shelf as the SMS
+   config above. CALL_RELAY stays UNSET until a real phone line is
+   connected later. Today the app itself never displays another
+   person's phone number: the Call button asks the server for the
+   number only at tap time (getJobCallTarget) and the number is
+   never printed on any screen. But the call still goes through
+   the phone's own dialer, so the other person's number can appear
+   in the phone's call history. True masking, where calls are
+   routed through a Jackwork number so neither side's phone ever
+   shows the other's number, waits for the phone line setup, like
+   text messages do. Do not claim more masking than this. In the
+   live Worker the same constant lives in worker/worker.js. */
+const CALL_RELAY = "";
+
 function smsConfigured(): boolean {
   return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
 }
@@ -360,8 +374,9 @@ async function blobUrlOrNull(
 async function toJob(
   ctx: { blobs: { getUrl: (k: string) => Promise<string> } },
   row: JobRow,
-  stripPrivate = false,
+  partyRole: false | "poster" | "worker" = false,
 ): Promise<z.infer<typeof jobShape>> {
+  const stripPrivate = !partyRole;
   const publicBoard = stripPrivate && row.status === "open";
   const beforeProofUrl = stripPrivate ? null : await blobUrlOrNull(ctx, row.beforeProofBlobKey ?? null);
   const afterProofUrl = stripPrivate ? null : await blobUrlOrNull(ctx, row.afterProofBlobKey ?? null);
@@ -378,16 +393,22 @@ async function toJob(
     urgency: row.urgency,
     scheduledDate: row.scheduledDate ?? null,
     scheduledTime: row.scheduledTime ?? null,
-    // Private to the poster and the worker on the job: the call
-    // numbers, the house directions, and the person's own GPS pin
-    // never go to other board viewers. placeLat/placeLng stay:
-    // they are the surveyed coordinates of a named town from the
-    // public settlement dataset, the same for everyone there,
-    // and the board's distance feature runs on them.
+    // Phone numbers are never shared between the two people on
+    // a job: each side's payload carries only its OWN numbers.
+    // The worker's payload has no poster number at all, and the
+    // poster's payload has no worker number; the Call button asks
+    // the server for the number at tap time only
+    // (getJobCallTarget) and no screen ever prints it. The house
+    // directions and the person's own GPS pin still go only to
+    // the two parties, never to other board viewers.
+    // placeLat/placeLng stay: they are the surveyed coordinates
+    // of a named town from the public settlement dataset, the
+    // same for everyone there, and the board's distance feature
+    // runs on them.
     houseDirections: stripPrivate ? null : (row.houseDirections ?? null),
     customerName: publicBoard ? "" : row.customerName,
-    customerPhone: stripPrivate ? "" : row.customerPhone,
-    contactPhone: stripPrivate ? null : (row.contactPhone ?? null),
+    customerPhone: partyRole === "poster" ? row.customerPhone : "",
+    contactPhone: partyRole === "poster" ? (row.contactPhone ?? null) : null,
     task: publicBoard ? null : (row.task ?? null),
     customerProfileId: publicBoard ? null : (row.customerProfileId ?? null),
     gpsLat: stripPrivate ? null : (row.gpsLat ?? null),
@@ -396,7 +417,7 @@ async function toJob(
     placeLng: row.placeLng ?? null,
     status: row.status,
     providerName: publicBoard ? null : (row.providerName ?? null),
-    providerPhone: stripPrivate ? null : (row.providerPhone ?? null),
+    providerPhone: partyRole === "worker" ? (row.providerPhone ?? null) : null,
     providerId: publicBoard ? null : (row.providerId ?? null),
     workerConfirmedAt: publicBoard ? null : (row.workerConfirmedAt?.toISOString() ?? null),
     proposedBudgetAmount: publicBoard ? null : (row.proposedBudgetAmount ?? null),
@@ -1074,13 +1095,13 @@ export const Actions = {
         const d = digitsOnly(p);
         return d === viewerPhone || d.endsWith(viewerPhone.slice(-7)) || viewerPhone.endsWith(d.slice(-7));
       };
-      const isParty = (j: JobRow) =>
-        viewerId != null &&
-        (j.customerProfileId === viewerId ||
-          j.providerId === viewerId ||
-          phoneMatch(j.customerPhone) ||
-          phoneMatch(j.providerPhone));
-      return { jobs: await Promise.all(rows.map((j) => toJob(ctx, j, !isParty(j)))) };
+      const partyRole = (j: JobRow): false | "poster" | "worker" => {
+        if (viewerId == null) return false;
+        if (j.customerProfileId === viewerId || phoneMatch(j.customerPhone)) return "poster";
+        if (j.providerId === viewerId || phoneMatch(j.providerPhone)) return "worker";
+        return false;
+      };
+      return { jobs: await Promise.all(rows.map((j) => toJob(ctx, j, partyRole(j)))) };
     },
   }),
 
@@ -1659,6 +1680,27 @@ export const Actions = {
         .where(eq(schema.profiles.id, actor.id));
       ctx.invalidateQueries();
       return { ok: true, error: null };
+    },
+  }),
+
+  getJobCallTarget: defineAction({
+    description: "The Call button's number, handed out only at tap time and only to one of the two people on the job. Numbers are never part of any screen or list payload between the two sides, so nobody sees the other person's digits in the app. When CALL_RELAY is connected later, this is where the call target becomes the Jackwork relay number instead.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable(), callTarget: z.string().nullable() }),
+    async handler(ctx, args) {
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again.", callTarget: null };
+      const job = await jobForId(ctx, args.jobId);
+      if (!job) return { ok: false, error: "That job is not there anymore.", callTarget: null };
+      let target = "";
+      if (isWorker(job, actor) && !isPoster(job, actor)) target = job.contactPhone || job.customerPhone || "";
+      else if (isPoster(job, actor)) target = job.providerPhone || "";
+      if (!target) return { ok: false, error: "No call is set up for this job yet.", callTarget: null };
+      const dialed = CALL_RELAY || target;
+      return { ok: true, error: null, callTarget: `tel:${dialed.replace(/[^+\d]/g, "")}` };
     },
   }),
 

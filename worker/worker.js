@@ -107,6 +107,19 @@ const SMS_PROVIDER = "";
 const SMS_API_KEY = "";
 const SMS_SENDER_ID = "";
 
+/* Masked calls: on the same waiting-for-a-line shelf as the SMS
+   config above. CALL_RELAY stays UNSET until a real phone line is
+   connected later. Today the app itself never displays another
+   person's phone number: the Call button asks the server for the
+   number only at tap time (getJobCallTarget) and the number is
+   never printed on any screen. But the call still goes through
+   the phone's own dialer, so the other person's number can appear
+   in the phone's call history. True masking, where calls are
+   routed through a Jackwork number so neither side's phone ever
+   shows the other's number, waits for the phone line setup, like
+   text messages do. Do not claim more masking than this. */
+const CALL_RELAY = "";
+
 function smsConfigured() {
   return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
 }
@@ -152,8 +165,8 @@ function publicPlace(row) {
   return String(row.location ?? "").split(",")[0]?.trim() || row.location;
 }
 
-function toJob(row, isParty = false) {
-  const stripPrivate = !isParty;
+function toJob(row, partyRole = false) {
+  const stripPrivate = !partyRole;
   const publicBoard = stripPrivate && row.status === "open";
   const iso = (v) => (v == null ? null : new Date(v).toISOString());
   return {
@@ -169,14 +182,19 @@ function toJob(row, isParty = false) {
     urgency: row.urgency,
     scheduledDate: row.scheduled_date ?? null,
     scheduledTime: row.scheduled_time ?? null,
-    // Private to the poster and the worker on the job: the call numbers,
-    // the house directions, and the poster's own GPS pin never go to
-    // other board viewers. placeLat/placeLng stay: they are the surveyed
+    // Phone numbers are never shared between the two people on a
+    // job: each side's payload carries only its OWN numbers. The
+    // worker's payload has no poster number at all, and the poster's
+    // payload has no worker number; the Call button asks the server
+    // for the number at tap time only (getJobCallTarget) and no
+    // screen ever prints it. The house directions and the poster's
+    // own GPS pin still go only to the two parties, never to other
+    // board viewers. placeLat/placeLng stay: they are the surveyed
     // coordinates of a named town from the public settlement dataset.
     houseDirections: stripPrivate ? null : (row.house_directions ?? null),
     customerName: publicBoard ? "" : row.customer_name,
-    customerPhone: stripPrivate ? "" : row.customer_phone,
-    contactPhone: stripPrivate ? null : (row.contact_phone ?? null),
+    customerPhone: partyRole === "poster" ? row.customer_phone : "",
+    contactPhone: partyRole === "poster" ? (row.contact_phone ?? null) : null,
     task: publicBoard ? null : (row.task ?? null),
     customerProfileId: publicBoard ? null : (row.customer_profile_id ?? null),
     gpsLat: stripPrivate ? null : (row.gps_lat ?? null),
@@ -185,7 +203,7 @@ function toJob(row, isParty = false) {
     placeLng: row.place_lng ?? null,
     status: row.status,
     providerName: publicBoard ? null : (row.provider_name ?? null),
-    providerPhone: stripPrivate ? null : (row.provider_phone ?? null),
+    providerPhone: partyRole === "worker" ? (row.provider_phone ?? null) : null,
     providerId: publicBoard ? null : (row.provider_id ?? null),
     workerConfirmedAt: publicBoard ? null : iso(row.worker_confirmed_at),
     proposedBudgetAmount: publicBoard ? null : (row.proposed_budget_amount ?? null),
@@ -850,13 +868,13 @@ const Actions = {
         viewerPhone = vp.phone;
       }
     }
-    const isParty = (j) =>
-      viewerId != null &&
-      (j.customer_profile_id === viewerId ||
-        j.provider_id === viewerId ||
-        (j.customer_phone && samePhone(j.customer_phone, viewerPhone)) ||
-        (j.provider_phone && samePhone(j.provider_phone, viewerPhone)));
-    return { jobs: rows.map((j) => toJob(j, isParty(j))) };
+    const partyRole = (j) => {
+      if (viewerId == null) return false;
+      if (j.customer_profile_id === viewerId || (j.customer_phone && samePhone(j.customer_phone, viewerPhone))) return "poster";
+      if (j.provider_id === viewerId || (j.provider_phone && samePhone(j.provider_phone, viewerPhone))) return "worker";
+      return false;
+    };
+    return { jobs: rows.map((j) => toJob(j, partyRole(j))) };
   },
 
   async createJob(env, args) {
@@ -1286,6 +1304,33 @@ const Actions = {
       [CURRENT_TERMS_VERSION, Date.now(), Date.now(), actor.id],
     );
     return { ok: true, error: null };
+  },
+
+  /* The Call button's number, handed out only at tap time and
+     only to one of the two people on the job. Numbers are never
+     part of any screen or list payload between the two sides
+     (see toJob), so nobody sees the other person's digits in the
+     app. When CALL_RELAY is connected later, this is where the
+     call target becomes the Jackwork relay number instead. */
+  async getJobCallTarget(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const jobId = reqId(args.jobId, "jobId");
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false, error: "Sign in again.", callTarget: null };
+    const job = await jobForId(env, jobId);
+    if (!job) return { ok: false, error: "That job is not there anymore.", callTarget: null };
+    const isPoster =
+      job.customer_profile_id === actor.id ||
+      (job.customer_phone && samePhone(job.customer_phone, actor.phone));
+    const isWorker =
+      job.provider_id === actor.id ||
+      (job.provider_phone && samePhone(job.provider_phone, actor.phone));
+    let target = "";
+    if (isWorker && !isPoster) target = job.contact_phone || job.customer_phone || "";
+    else if (isPoster) target = job.provider_phone || "";
+    if (!target) return { ok: false, error: "No call is set up for this job yet.", callTarget: null };
+    const dialed = CALL_RELAY || target;
+    return { ok: true, error: null, callTarget: `tel:${String(dialed).replace(/[^+\d]/g, "")}` };
   },
 
   async listNotifications(env, args) {

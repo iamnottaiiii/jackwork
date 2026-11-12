@@ -1210,7 +1210,6 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse, p
     const poster: PlaceFields = { county: countyPart.trim() || null, district: null, city: cityPart.trim() || null, community: job.landmark ?? null };
     return areaLabel(poster, placeOf(profile));
   })();
-  const callNumber = job.contactPhone ?? job.customerPhone;
   return (
     <div className="glass p-5" style={{ borderRadius: 12 }}>
       <div className="flex items-center justify-between gap-3">
@@ -1236,9 +1235,6 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse, p
         )}
         <span>When: {scheduleLabel(job)}</span>
         <span className="text-sm text-[var(--dim)]">Posted {timeAgo(job.createdAt)}</span>
-        {callNumber.trim() && (
-          <span className="inline-flex items-center gap-2"><PhoneIcon /> Call: {callNumber}</span>
-        )}
         {showHouse && job.houseDirections && (
           <span className="inline-flex items-start gap-2"><PinIcon /> House: {job.houseDirections}</span>
         )}
@@ -2281,7 +2277,7 @@ function PostWizard({
         jobLandmark ? `Community: ${jobLandmark}.` : "",
         profile.houseDirections ? `How to get to the house: ${profile.houseDirections}.` : "",
         isEmergency ? "Needed right now." : schedLabel ? `Come on ${schedLabel}.` : "",
-        `In ${jobLocation}. Call ${finalCallPhone}.`,
+        `In ${jobLocation}.`,
       ].filter(Boolean);
       await api.createJob({
         title,
@@ -3219,9 +3215,54 @@ function MyJobsFlow({
    ================================================================ */
 type JobLifecycleAction = "confirmCall" | "proposePrice" | "acceptPrice" | "declinePrice" | "sendMoney" | "start" | "finish" | "confirmDone" | "problem";
 
+/* The Call button on a job. The other person's number is never in
+   the page payload and never printed anywhere: the button asks
+   the server for the call target only when it is tapped, and the
+   phone dials it. The number itself is never shown. */
+function JobCallButton({
+  jobId,
+  sessionToken,
+  label,
+  ariaLabel,
+  className,
+}: {
+  jobId: number;
+  sessionToken: string;
+  label: string;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  async function call() {
+    setFailed(false);
+    setBusy(true);
+    try {
+      const res = await api.getJobCallTarget({ jobId, sessionToken });
+      if (res.ok && res.callTarget) {
+        window.location.href = res.callTarget;
+      } else {
+        setFailed(true);
+      }
+    } catch {
+      setFailed(true);
+    }
+    setBusy(false);
+  }
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={call} className={className ?? "inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold"} style={darkBtnStyle} aria-label={ariaLabel}>
+        <PhoneIcon /> {busy ? "Calling..." : label}
+      </button>
+      {failed && <p className="text-center text-base font-semibold" style={{ color: "var(--danger)" }}>The call did not go through. Try again.</p>}
+    </>
+  );
+}
+
 function JobScreen({
   job,
   profile,
+  sessionToken,
   photoByProfileId,
   onBack,
   onStatus,
@@ -3232,6 +3273,7 @@ function JobScreen({
 }: {
   job: Job;
   profile: MyProfile;
+  sessionToken: string;
   photoByProfileId: Map<number, string | null>;
   onBack: () => void;
   onStatus: (job: Job, status: "open" | "cancelled") => void;
@@ -3251,7 +3293,6 @@ function JobScreen({
   const proofRef = useRef<HTMLInputElement>(null);
   const isCustomer = job.customerProfileId === profile.id || samePhone(job.customerPhone, profile.phone);
   const isWorker = job.providerId === profile.id || (job.providerPhone != null && samePhone(job.providerPhone, profile.phone));
-  const callNumber = job.contactPhone ?? job.customerPhone;
   const publicView = !isCustomer && !isWorker && job.status === "open";
   const problemStatuses = ["price_proposed", "confirmed", "held", "in_progress", "worker_done"];
 
@@ -3329,10 +3370,8 @@ function JobScreen({
 
       {isCustomer && (
         <div className="mt-4 flex flex-col gap-2.5">
-          {job.providerPhone && job.status !== "completed" && job.status !== "cancelled" && (
-            <a href={`tel:${digits(job.providerPhone)}`} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call worker ${job.providerName ?? ""}`}>
-              <PhoneIcon /> Call worker
-            </a>
+          {job.providerId != null && job.status !== "completed" && job.status !== "cancelled" && (
+            <JobCallButton jobId={job.id} sessionToken={sessionToken} label="Call worker" ariaLabel={`Call worker ${job.providerName ?? ""}`} />
           )}
           {job.status === "accepted" && (
             <div className="glass p-5 text-center" style={{ borderRadius: 12 }}>
@@ -3410,9 +3449,7 @@ function JobScreen({
                 <span>When: {scheduleLabel(job)}</span>
                 <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{amountLabel(job) ?? "Price agreed by phone"}</span>
               </div>
-              <a href={`tel:${digits(callNumber)}`} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
-                <PhoneIcon /> Call {job.customerName.split(" ")[0]}
-              </a>
+              <JobCallButton jobId={job.id} sessionToken={sessionToken} label={`Call ${job.customerName.split(" ")[0]}`} ariaLabel={`Call customer ${job.customerName}`} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" />
               <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmCall")} className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="We talked, I understand the job, I can do it">
                 {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
               </button>
@@ -3445,9 +3482,7 @@ function JobScreen({
               )}
             </div>
           ) : job.status !== "completed" && job.status !== "cancelled" && (
-            <a href={`tel:${digits(callNumber)}`} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
-              <PhoneIcon /> Call {job.customerName.split(" ")[0]}
-            </a>
+            <JobCallButton jobId={job.id} sessionToken={sessionToken} label={`Call ${job.customerName.split(" ")[0]}`} ariaLabel={`Call customer ${job.customerName}`} />
           )}
           {job.status === "price_proposed" && (
             <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to answer the new price.</p>
@@ -4220,6 +4255,7 @@ export function App() {
             <JobScreen
               job={openJob}
               profile={profile}
+              sessionToken={storedToken}
               photoByProfileId={photoByProfileId}
               onBack={() => setScreen(jobReturn)}
               onStatus={(job, status) => statusMut.mutate({ job, status })}
