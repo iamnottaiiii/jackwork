@@ -272,6 +272,35 @@ export const notifications = sqliteTable("notifications", {
   readAt: integer("read_at", { mode: "timestamp_ms" }),
 });
 
+/** One in-app chat message on a job. Only the job's two parties can
+    read or write a job's messages (checked server side by token).
+    Messages are kept: when a Problem is reported, Jackwork admin can
+    read the job's chat to help settle it. */
+export const messages = sqliteTable("messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull(),
+  senderProfileId: integer("sender_profile_id").notNull(),
+  body: text("body").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** One WebRTC signaling row for an in-app voice call on a job
+    (ring, offer, answer, candidate, accept, decline, end). The two
+    clients poll these while a call is being set up. Call audio is
+    browser to browser and never touches the server. */
+export const callSignals = sqliteTable("call_signals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull(),
+  fromProfileId: integer("from_profile_id").notNull(),
+  kind: text("kind").notNull(),
+  payload: text("payload"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** Web Push subscriptions, one per browser or installed app where the
     person turned phone notifications on. */
 export const pushSubscriptions = sqliteTable("push_subscriptions", {

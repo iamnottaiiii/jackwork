@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionsModule } from "@hatch/space-sdk";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 const jobShape = z.object({
@@ -147,19 +147,13 @@ const SMS_PROVIDER = "";
 const SMS_API_KEY = "";
 const SMS_SENDER_ID = "";
 
-/* Masked calls: on the same waiting-for-a-line shelf as the SMS
-   config above. CALL_RELAY stays UNSET until a real phone line is
-   connected later. Today the app itself never displays another
-   person's phone number: the Call button asks the server for the
-   number only at tap time (getJobCallTarget) and the number is
-   never printed on any screen. But the call still goes through
-   the phone's own dialer, so the other person's number can appear
-   in the phone's call history. True masking, where calls are
-   routed through a Jackwork number so neither side's phone ever
-   shows the other's number, waits for the phone line setup, like
-   text messages do. Do not claim more masking than this. In the
-   live Worker the same constant lives in worker/worker.js. */
-const CALL_RELAY = "";
+/* Calls used to go through the phone dialer with the number
+   handed out only at tap time. That is gone: contact between the
+   two people on a job is now inside the app (chat, and voice
+   calls browser to browser over the internet), so no number is
+   ever dialed, shown, or handed out at all. There is no call
+   relay config anymore because in-app calls need no phone line.
+   In the live Worker the same note lives in worker/worker.js. */
 
 function smsConfigured(): boolean {
   return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
@@ -396,9 +390,9 @@ async function toJob(
     // Phone numbers are never shared between the two people on
     // a job: each side's payload carries only its OWN numbers.
     // The worker's payload has no poster number at all, and the
-    // poster's payload has no worker number; the Call button asks
-    // the server for the number at tap time only
-    // (getJobCallTarget) and no screen ever prints it. The house
+    // poster's payload has no worker number. Contact between the
+    // two sides is in-app chat and in-app voice calls, so no
+    // number is ever printed, handed out, or dialed. The house
     // directions and the person's own GPS pin still go only to
     // the two parties, never to other board viewers.
     // placeLat/placeLng stay: they are the surveyed coordinates
@@ -1152,7 +1146,7 @@ export const Actions = {
           houseDirections: args.houseDirections?.trim() ? args.houseDirections.trim() : null,
           customerName: args.customerName.trim(),
           customerPhone: args.customerPhone.trim(),
-          contactPhone: args.contactPhone?.trim() ? args.contactPhone.trim() : args.customerPhone.trim(),
+          contactPhone: args.contactPhone?.trim() ? args.contactPhone.trim() : null,
           task: args.task?.trim() ? args.task.trim() : null,
           customerProfileId: args.customerProfileId ?? null,
           gpsLat: args.gpsLat ?? null,
@@ -1683,24 +1677,148 @@ export const Actions = {
     },
   }),
 
-  getJobCallTarget: defineAction({
-    description: "The Call button's number, handed out only at tap time and only to one of the two people on the job. Numbers are never part of any screen or list payload between the two sides, so nobody sees the other person's digits in the app. When CALL_RELAY is connected later, this is where the call target becomes the Jackwork relay number instead.",
+  listJobMessages: defineAction({
+    description: "The in-app chat on one job, oldest first. Only the job's two parties can read it, proven by the session token; chat opens once a worker is accepted and stays open for the job's whole life. Names only, no phone numbers anywhere.",
     request: z.object({
       jobId: z.number().int().positive(),
       sessionToken: z.string().min(10).max(300),
     }),
-    response: z.object({ ok: z.boolean(), error: z.string().nullable(), callTarget: z.string().nullable() }),
+    response: z.object({
+      messages: z.array(z.object({
+        id: z.number(),
+        senderProfileId: z.number(),
+        senderName: z.string(),
+        body: z.string(),
+        createdAt: z.string(),
+        mine: z.boolean(),
+      })),
+    }),
     async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
       const actor = await actorForToken(ctx, args.sessionToken);
-      if (!actor) return { ok: false, error: "Sign in again.", callTarget: null };
+      if (!actor) return { messages: [] };
       const job = await jobForId(ctx, args.jobId);
-      if (!job) return { ok: false, error: "That job is not there anymore.", callTarget: null };
-      let target = "";
-      if (isWorker(job, actor) && !isPoster(job, actor)) target = job.contactPhone || job.customerPhone || "";
-      else if (isPoster(job, actor)) target = job.providerPhone || "";
-      if (!target) return { ok: false, error: "No call is set up for this job yet.", callTarget: null };
-      const dialed = CALL_RELAY || target;
-      return { ok: true, error: null, callTarget: `tel:${dialed.replace(/[^+\d]/g, "")}` };
+      if (!job || !job.providerId) return { messages: [] };
+      if (!isPoster(job, actor) && !isWorker(job, actor)) return { messages: [] };
+      const rows = await db.select().from(schema.messages).where(eq(schema.messages.jobId, args.jobId)).orderBy(asc(schema.messages.id)).limit(500);
+      const names = new Map<number, string>();
+      for (const pid of [job.customerProfileId, job.providerId]) {
+        if (pid == null) continue;
+        const p = await db.select({ fullName: schema.profiles.fullName }).from(schema.profiles).where(eq(schema.profiles.id, pid)).limit(1);
+        if (p[0]) names.set(pid, p[0].fullName);
+      }
+      return {
+        messages: rows.map((m) => ({
+          id: m.id,
+          senderProfileId: m.senderProfileId,
+          senderName: names.get(m.senderProfileId) ?? "",
+          body: m.body,
+          createdAt: (m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt as any)).toISOString(),
+          mine: m.senderProfileId === actor.id,
+        })),
+      };
+    },
+  }),
+
+  sendJobMessage: defineAction({
+    description: "Sends one in-app chat message on a job. Only the job's two parties can write, proven by the session token, and only once a worker is accepted.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      body: z.string().min(1).max(1000),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable(), id: z.number().nullable().optional() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again." };
+      const job = await jobForId(ctx, args.jobId);
+      if (!job) return { ok: false, error: "That job is not there anymore." };
+      if (!job.providerId) return { ok: false, error: "Chat opens when a worker takes the job." };
+      if (!isPoster(job, actor) && !isWorker(job, actor)) {
+        return { ok: false, error: "Only the two people on this job can use its chat." };
+      }
+      const inserted = await db
+        .insert(schema.messages)
+        .values({ jobId: args.jobId, senderProfileId: actor.id, body: args.body.trim() })
+        .returning({ id: schema.messages.id });
+      ctx.invalidateQueries();
+      return { ok: true, error: null, id: inserted[0]?.id ?? null };
+    },
+  }),
+
+  sendCallSignal: defineAction({
+    description: "Stores one WebRTC signaling row for an in-app voice call on a job (ring, offer, answer, candidate, accept, decline, end). Only the job's two parties, proven by the session token. A ring also creates a notification and push for the other side, like every job event.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      kind: z.enum(["ring", "offer", "answer", "candidate", "accept", "decline", "end"]),
+      payload: z.string().max(30000).optional(),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable(), id: z.number().nullable().optional() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again." };
+      const job = await jobForId(ctx, args.jobId);
+      if (!job) return { ok: false, error: "That job is not there anymore." };
+      if (!job.providerId) return { ok: false, error: "Calls open when a worker takes the job." };
+      const poster = isPoster(job, actor);
+      const worker = isWorker(job, actor);
+      if (!poster && !worker) return { ok: false, error: "Only the two people on this job can call on it." };
+      const inserted = await db
+        .insert(schema.callSignals)
+        .values({ jobId: args.jobId, fromProfileId: actor.id, kind: args.kind, payload: args.payload ?? null })
+        .returning({ id: schema.callSignals.id });
+      if (args.kind === "ring") {
+        const otherId = poster ? job.providerId : job.customerProfileId;
+        const callerFirst = String(actor.fullName || "Someone").split(" ")[0];
+        await notifyJobEvent(ctx, otherId, job, "call", `${callerFirst} is calling you about the job: ${job.title}`);
+      }
+      ctx.invalidateQueries();
+      return { ok: true, error: null, id: inserted[0]?.id ?? null };
+    },
+  }),
+
+  listCallSignals: defineAction({
+    description: "The WebRTC signaling rows on a job newer than sinceId, oldest first, for the polling clients. Only the job's two parties, proven by the session token.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      sinceId: z.number().int().min(0).optional(),
+    }),
+    response: z.object({
+      signals: z.array(z.object({
+        id: z.number(),
+        fromProfileId: z.number(),
+        kind: z.string(),
+        payload: z.string().nullable(),
+        createdAt: z.string(),
+      })),
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { signals: [] };
+      const job = await jobForId(ctx, args.jobId);
+      if (!job || !job.providerId) return { signals: [] };
+      if (!isPoster(job, actor) && !isWorker(job, actor)) return { signals: [] };
+      const since = args.sinceId ?? 0;
+      const rows = await db
+        .select()
+        .from(schema.callSignals)
+        .where(and(eq(schema.callSignals.jobId, args.jobId), gt(schema.callSignals.id, since)))
+        .orderBy(asc(schema.callSignals.id))
+        .limit(200);
+      return {
+        signals: rows.map((s) => ({
+          id: s.id,
+          fromProfileId: s.fromProfileId,
+          kind: s.kind,
+          payload: s.payload ?? null,
+          createdAt: (s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt as any)).toISOString(),
+        })),
+      };
     },
   }),
 

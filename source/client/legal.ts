@@ -56,7 +56,7 @@ export const TERMS: LegalDoc = {
       body: [
         "Say what the job is, in your own words, and the amount you will pay, in Liberian dollars or US dollars.",
         "Pick the day and the time you want the work, or say you need it now.",
-        "Your place is saved on your profile and goes on your jobs by itself. The worker who accepts your job sees how to get to your house. Your phone number is never shown to the worker. Calls are made through the app.",
+        "Your place is saved on your profile and goes on your jobs by itself. The worker who accepts your job sees how to get to your house. Your phone number is never shown to the worker. You talk inside the app, by chat and in-app calls.",
       ],
     },
     {
@@ -69,7 +69,8 @@ export const TERMS: LegalDoc = {
     {
       heading: "The call and the price",
       body: [
-        "After you accept a job, call the person through the app. Talk about what the work is, what is happening, and what exactly needs to be done, so you do not travel and find a bigger job than you expected.",
+        "After you accept a job, talk to the person inside Jackwork: send chat messages, or call in the app. The call goes over the internet inside the app. No phone numbers are shown or used, and the call costs nothing.",
+        "Talk about what the work is, what is happening, and what exactly needs to be done, so you do not travel and find a bigger job than you expected.",
         "After the call, tap that you talked and you understand the job.",
         "If the job is bigger or different from what was said, you can change the price once, after the call. The new price works only if the person who posted the job agrees to it.",
         "If they say no, you are released and the job goes back for others, at the first price.",
@@ -116,7 +117,7 @@ export const TERMS: LegalDoc = {
     {
       heading: "Staying safe",
       body: [
-        "Meet carefully. Talk on the phone first, and tell someone where you are going.",
+        "Meet carefully. Talk in the app first, and tell someone where you are going.",
         "Jackwork checks profiles with ID, keeps ratings, and can look at jobs, but Jackwork cannot guarantee how any person will behave. Use your own judgment.",
       ],
     },
@@ -152,7 +153,8 @@ export const PRIVACY: LegalDoc = {
   points: [
     "We keep your name, phone number, where you live, and your ID photo to run Jackwork and keep people safe.",
     "An open job shows only the job name, the amount, when it is, the distance, and the town or community.",
-    "Your phone number is never shown to other people in Jackwork. Calls are made through the app.",
+    "Your phone number is never shown to other people in Jackwork. You talk by chat and calls inside the app.",
+    "Chat messages on a job are kept with the job. If a Problem is reported, Jackwork can read the chat to help.",
     "Your ID photo is never shown to other users. Only Jackwork admin can see it, to check who you are.",
     "We do not sell your information.",
     "In this testing version, your sign-in code shows on your screen, because no text message line is connected yet.",
@@ -167,6 +169,7 @@ export const PRIVACY: LegalDoc = {
         "Your Mobile Money number, when you add it.",
         "Your profile picture, and a photo of your ID.",
         "Your jobs: what the job is, the amount, the day and time, and the place.",
+        "Chat messages you send on a job. They are kept with the job.",
         "Proof photos, videos, or recordings for a job, when the worker adds them.",
         "Your notifications and your ratings.",
       ],
@@ -182,7 +185,8 @@ export const PRIVACY: LegalDoc = {
       heading: "Who can see what",
       body: [
         "An open job, before anyone accepts it, shows only the job name, the amount, when it is, the distance, and the town or community. It does not show your name, your phone number, or your house description.",
-        "When a worker accepts your job, that worker sees how to get to your house. Your phone number is not shown to the worker, and the worker's phone number is not shown to you. Calls are made through the app, and neither side sees the other side's number in the app.",
+        "When a worker accepts your job, that worker sees how to get to your house. Your phone number is not shown to the worker, and the worker's phone number is not shown to you. The two of you talk inside Jackwork, by chat messages and calls in the app, and neither side ever sees the other side's number.",
+        "Chat messages stay with the job. If a Problem is reported on the job, Jackwork admin can read the chat to help settle it.",
         "Your profile picture and your town or community can be seen by other users. Your Mobile Money number is not shown to other users.",
       ],
     },

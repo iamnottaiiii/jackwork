@@ -107,18 +107,12 @@ const SMS_PROVIDER = "";
 const SMS_API_KEY = "";
 const SMS_SENDER_ID = "";
 
-/* Masked calls: on the same waiting-for-a-line shelf as the SMS
-   config above. CALL_RELAY stays UNSET until a real phone line is
-   connected later. Today the app itself never displays another
-   person's phone number: the Call button asks the server for the
-   number only at tap time (getJobCallTarget) and the number is
-   never printed on any screen. But the call still goes through
-   the phone's own dialer, so the other person's number can appear
-   in the phone's call history. True masking, where calls are
-   routed through a Jackwork number so neither side's phone ever
-   shows the other's number, waits for the phone line setup, like
-   text messages do. Do not claim more masking than this. */
-const CALL_RELAY = "";
+/* Calls used to go through the phone dialer with the number
+   handed out only at tap time. That is gone: contact between the
+   two people on a job is now inside the app (chat, and voice
+   calls browser to browser over the internet), so no number is
+   ever dialed, shown, or handed out at all. There is no call
+   relay config anymore because in-app calls need no phone line. */
 
 function smsConfigured() {
   return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
@@ -185,9 +179,9 @@ function toJob(row, partyRole = false) {
     // Phone numbers are never shared between the two people on a
     // job: each side's payload carries only its OWN numbers. The
     // worker's payload has no poster number at all, and the poster's
-    // payload has no worker number; the Call button asks the server
-    // for the number at tap time only (getJobCallTarget) and no
-    // screen ever prints it. The house directions and the poster's
+    // payload has no worker number. Contact between the two sides
+    // is in-app chat and in-app voice calls, so no number is ever
+    // printed, handed out, or dialed. The house directions and the poster's
     // own GPS pin still go only to the two parties, never to other
     // board viewers. placeLat/placeLng stay: they are the surveyed
     // coordinates of a named town from the public settlement dataset.
@@ -238,6 +232,14 @@ async function actorForToken(env, sessionToken) {
 
 async function jobForId(env, jobId) {
   return await firstRow(env, "SELECT * FROM jobs WHERE id = ?", [jobId]);
+}
+
+function isPosterRow(job, actor) {
+  return job.customer_profile_id === actor.id || (job.customer_phone && samePhone(job.customer_phone, actor.phone));
+}
+
+function isWorkerRow(job, actor) {
+  return job.provider_id === actor.id || (job.provider_phone && samePhone(job.provider_phone, actor.phone));
 }
 
 function isPoster(job, actor) {
@@ -931,7 +933,7 @@ const Actions = {
         houseDirections?.trim() ? houseDirections.trim() : null,
         customerName.trim(),
         customerPhone.trim(),
-        contactPhone?.trim() ? contactPhone.trim() : customerPhone.trim(),
+        contactPhone?.trim() ? contactPhone.trim() : null,
         task?.trim() ? task.trim() : null,
         customerProfileId,
         gpsLat,
@@ -1306,31 +1308,127 @@ const Actions = {
     return { ok: true, error: null };
   },
 
-  /* The Call button's number, handed out only at tap time and
-     only to one of the two people on the job. Numbers are never
-     part of any screen or list payload between the two sides
-     (see toJob), so nobody sees the other person's digits in the
-     app. When CALL_RELAY is connected later, this is where the
-     call target becomes the Jackwork relay number instead. */
-  async getJobCallTarget(env, args) {
+  /* In-app contact on a job: chat messages and voice call
+     signaling. Both are checked the same way: the caller is
+     proven by the session token, and only the job's two parties
+     can read or write. Contact opens once a worker is accepted
+     (the job has a provider) and stays open for the job's whole
+     life, including after it is done. No phone numbers are
+     involved anywhere: names only. */
+
+  async listJobMessages(env, args) {
     const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
     const jobId = reqId(args.jobId, "jobId");
     const actor = await actorForToken(env, sessionToken);
-    if (!actor) return { ok: false, error: "Sign in again.", callTarget: null };
+    if (!actor) return { messages: [] };
     const job = await jobForId(env, jobId);
-    if (!job) return { ok: false, error: "That job is not there anymore.", callTarget: null };
-    const isPoster =
-      job.customer_profile_id === actor.id ||
-      (job.customer_phone && samePhone(job.customer_phone, actor.phone));
-    const isWorker =
-      job.provider_id === actor.id ||
-      (job.provider_phone && samePhone(job.provider_phone, actor.phone));
-    let target = "";
-    if (isWorker && !isPoster) target = job.contact_phone || job.customer_phone || "";
-    else if (isPoster) target = job.provider_phone || "";
-    if (!target) return { ok: false, error: "No call is set up for this job yet.", callTarget: null };
-    const dialed = CALL_RELAY || target;
-    return { ok: true, error: null, callTarget: `tel:${String(dialed).replace(/[^+\d]/g, "")}` };
+    if (!job || !job.provider_id) return { messages: [] };
+    const poster = isPosterRow(job, actor);
+    const worker = isWorkerRow(job, actor);
+    if (!poster && !worker) return { messages: [] };
+    const rows = await allRows(
+      env,
+      "SELECT * FROM messages WHERE job_id = ? ORDER BY id ASC LIMIT 500",
+      [jobId],
+    );
+    const names = new Map();
+    for (const pid of [job.customer_profile_id, job.provider_id]) {
+      if (pid == null) continue;
+      const p = await firstRow(env, "SELECT full_name FROM profiles WHERE id = ?", [pid]);
+      if (p) names.set(pid, p.full_name);
+    }
+    return {
+      messages: rows.map((m) => ({
+        id: m.id,
+        senderProfileId: m.sender_profile_id,
+        senderName: names.get(m.sender_profile_id) ?? "",
+        body: m.body,
+        createdAt: new Date(m.created_at).toISOString(),
+        mine: m.sender_profile_id === actor.id,
+      })),
+    };
+  },
+
+  async sendJobMessage(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const jobId = reqId(args.jobId, "jobId");
+    const body = reqStr(args.body, "body", 1, 1000);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false, error: "Sign in again." };
+    const job = await jobForId(env, jobId);
+    if (!job) return { ok: false, error: "That job is not there anymore." };
+    if (!job.provider_id) return { ok: false, error: "Chat opens when a worker takes the job." };
+    if (!isPosterRow(job, actor) && !isWorkerRow(job, actor)) {
+      return { ok: false, error: "Only the two people on this job can use its chat." };
+    }
+    const res = await runSql(
+      env,
+      "INSERT INTO messages (job_id, sender_profile_id, body, created_at) VALUES (?, ?, ?, ?)",
+      [jobId, actor.id, body.trim(), Date.now()],
+    );
+    return { ok: true, error: null, id: res.meta.last_row_id };
+  },
+
+  async sendCallSignal(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const jobId = reqId(args.jobId, "jobId");
+    const kind = reqStr(args.kind, "kind", 2, 20);
+    const kinds = ["ring", "offer", "answer", "candidate", "accept", "decline", "end"];
+    if (!kinds.includes(kind)) throw bad("Invalid kind.");
+    const payload = optStr(args.payload, "payload", 30000, undefined);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false, error: "Sign in again." };
+    const job = await jobForId(env, jobId);
+    if (!job) return { ok: false, error: "That job is not there anymore." };
+    if (!job.provider_id) return { ok: false, error: "Calls open when a worker takes the job." };
+    const poster = isPosterRow(job, actor);
+    const worker = isWorkerRow(job, actor);
+    if (!poster && !worker) return { ok: false, error: "Only the two people on this job can call on it." };
+    const res = await runSql(
+      env,
+      "INSERT INTO call_signals (job_id, from_profile_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+      [jobId, actor.id, kind, payload ?? null, Date.now()],
+    );
+    if (kind === "ring") {
+      /* The other side sees the incoming call in their app by
+         polling, and also gets a notification record and a push,
+         the same machinery as every other job event. */
+      const otherId = poster ? job.provider_id : job.customer_profile_id;
+      const callerFirst = String(actor.full_name || "Someone").split(" ")[0];
+      await notifyJobEvent(env, otherId, job, "call", `${callerFirst} is calling you about the job: ${job.title}`);
+    }
+    return { ok: true, error: null, id: res.meta.last_row_id };
+  },
+
+  async listCallSignals(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const jobId = reqId(args.jobId, "jobId");
+    let sinceId = 0;
+    if (args.sinceId !== undefined && args.sinceId !== null) {
+      if (typeof args.sinceId !== "number" || !Number.isInteger(args.sinceId) || args.sinceId < 0) {
+        throw bad("Invalid sinceId.");
+      }
+      sinceId = args.sinceId;
+    }
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { signals: [] };
+    const job = await jobForId(env, jobId);
+    if (!job || !job.provider_id) return { signals: [] };
+    if (!isPosterRow(job, actor) && !isWorkerRow(job, actor)) return { signals: [] };
+    const rows = await allRows(
+      env,
+      "SELECT * FROM call_signals WHERE job_id = ? AND id > ? ORDER BY id ASC LIMIT 200",
+      [jobId, sinceId],
+    );
+    return {
+      signals: rows.map((s) => ({
+        id: s.id,
+        fromProfileId: s.from_profile_id,
+        kind: s.kind,
+        payload: s.payload ?? null,
+        createdAt: new Date(s.created_at).toISOString(),
+      })),
+    };
   },
 
   async listNotifications(env, args) {
@@ -1418,6 +1516,20 @@ const Actions = {
       if (j.customer_profile_id != null) postedBy.set(j.customer_profile_id, (postedBy.get(j.customer_profile_id) || 0) + 1);
       if (j.provider_id != null && j.status === "completed") doneBy.set(j.provider_id, (doneBy.get(j.provider_id) || 0) + 1);
     }
+    /* When a Problem is pressed on a job, the operator can read
+       that job's chat to help settle it (stated in the Privacy
+       Policy). Chats of jobs with no problem are not included. */
+    const chatByJob = new Map();
+    for (const j of jobRows) {
+      if (!j.problem_reported) continue;
+      const msgs = await allRows(env, "SELECT * FROM messages WHERE job_id = ? ORDER BY id ASC LIMIT 200", [j.id]);
+      chatByJob.set(j.id, msgs.map((m) => ({
+        from: m.sender_profile_id === j.customer_profile_id ? (j.customer_name || "Poster")
+          : m.sender_profile_id === j.provider_id ? (j.provider_name || "Worker") : "Unknown",
+        body: m.body,
+        createdAt: new Date(m.created_at).toISOString(),
+      })));
+    }
     const townPart = (loc) => (loc || "").split(",")[0].trim();
     return {
       ok: true,
@@ -1441,6 +1553,7 @@ const Actions = {
         paymentState: j.payment_state || "waiting",
         problemReported: !!j.problem_reported,
         problemBy: j.problem_by || null,
+        chat: chatByJob.get(j.id) ?? [],
         createdAt: new Date(j.created_at).toISOString(),
       })),
       profiles: profileRows.map((p) => ({

@@ -2129,7 +2129,7 @@ function CallInScreen({ onBack }: { onBack: () => void }) {
    ================================================================ */
 type PostStage =
   | "pick" | "group" | "service" | "ask"
-  | "callPhone" | "day" | "time" | "pay" | "note" | "check";
+  | "day" | "time" | "pay" | "note" | "check";
 
 function PostWizard({
   profile,
@@ -2149,8 +2149,6 @@ function PostWizard({
   // the work's own detail questions: all on ONE screen, all tap
   // answers, all optional. The answers join the posting.
   const [answers, setAnswers] = useState<string[]>([]);
-  // the rest
-  const [callPhone, setCallPhone] = useState<string | null>(null);
   // the exact day (YYYY-MM-DD) the person taps on the calendar, and
   // the exact time built from three big taps: the hour (1 to 12),
   // the minutes (:00, :15, :30, :45), and AM or PM. The parts stay
@@ -2187,7 +2185,6 @@ function PostWizard({
   // The job carries the poster's PICKED community (a fixed list
   // entry, never free text) so it can be matched and filtered by it.
   const jobLandmark = profile.community ?? (profile.address || null);
-  const finalCallPhone = (callPhone ?? profile.phone).trim();
   const isEmergency = activeService?.group === "Need It NOW";
   const schedLabel = schedDate && schedTime ? `${dayLabel(schedDate)} at ${schedTime}` : null;
   // The full picked moment is no good if it has already passed
@@ -2235,10 +2232,9 @@ function PostWizard({
       case "group": return () => setStage("pick");
       case "service": return () => setStage("group");
       case "ask": return () => setStage(activeService ? "service" : "pick");
-      case "callPhone": return () => setStage("ask");
-      case "day": return () => setStage("callPhone");
+      case "day": return () => setStage("ask");
       case "time": return () => setStage("day");
-      case "pay": return () => setStage(isEmergency ? "callPhone" : "time");
+      case "pay": return () => setStage(isEmergency ? "ask" : "time");
       case "note": return () => setStage("pay");
       case "check": return () => setStage("note");
       default: return onExit;
@@ -2250,10 +2246,6 @@ function PostWizard({
     setError(null);
     if (!jobLocation || jobLocation.trim().length < 2) {
       setError("Add where you live in your profile first, then post.");
-      return;
-    }
-    if (digits(finalCallPhone).length < 6) {
-      setError("The worker needs a number to call. Go back and check it.");
       return;
     }
     if (!isEmergency) {
@@ -2296,7 +2288,6 @@ function PostWizard({
         payMethod: "Mobile Money",
         customerName: profile.fullName,
         customerPhone: profile.phone,
-        contactPhone: finalCallPhone,
         customerProfileId: profile.id,
         // The job carries the coordinates of the place on the
         // poster's profile (from the real place record they
@@ -2513,7 +2504,7 @@ function PostWizard({
         <button
           type="button"
           disabled={missingRequired}
-          onClick={() => setStage("callPhone")}
+          onClick={() => setStage(isEmergency ? "pay" : "day")}
           className="mx-auto mt-8 w-full max-w-[300px] py-4 text-xl font-black disabled:opacity-40"
           style={primaryBtnStyle}
         >
@@ -2522,37 +2513,13 @@ function PostWizard({
         {!missingRequired && (
           <button
             type="button"
-            onClick={() => { setAnswers([]); setStage("callPhone"); }}
+            onClick={() => { setAnswers([]); setStage(isEmergency ? "pay" : "day"); }}
             className="mt-2 w-full py-3 text-center text-base font-bold text-[var(--dim)]"
             aria-label="Skip the details"
           >
             Skip
           </button>
         )}
-      </Screen>
-    );
-  }
-
-  /* The number the worker should call. */
-  if (stage === "callPhone") {
-    return (
-      <Screen title="What number should the worker call?" onBack={backFrom("callPhone")}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (digits(finalCallPhone).length < 6) { setError("Enter the number to call."); return; }
-            setError(null);
-            // Need It NOW jobs mean right now: no day and time to pick.
-            setStage(isEmergency ? "pay" : "day");
-          }}
-        >
-          <label className="sr-only" htmlFor="pw-call">Number the worker should call</label>
-          <input id="pw-call" value={callPhone ?? profile.phone} onChange={(e) => setCallPhone(e.target.value)} inputMode="tel" placeholder="0770 000 000" autoComplete="tel" className={bigInputCls} />
-          {error && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{error}</p>}
-          <button type="submit" className="mt-5 w-full py-4 text-xl font-black" style={primaryBtnStyle}>
-            Next
-          </button>
-        </form>
       </Screen>
     );
   }
@@ -2831,7 +2798,6 @@ function PostWizard({
           <div className="mt-4 grid gap-1.5 border-t border-[var(--border)] pt-4 text-base font-semibold text-[var(--text)]">
             <span className="inline-flex items-center gap-2"><PinIcon />{jobLocation}</span>
             {jobLandmark && <span>{jobLandmark}</span>}
-            <span className="inline-flex items-center gap-2"><PhoneIcon /> Call: {finalCallPhone}</span>
             {profile.houseDirections && <span>House: {profile.houseDirections}</span>}
             {detailText && <span>Details: {detailText}</span>}
             <span>When: {isEmergency ? "Right now" : (schedLabel ?? "")}</span>
@@ -3215,48 +3181,288 @@ function MyJobsFlow({
    ================================================================ */
 type JobLifecycleAction = "confirmCall" | "proposePrice" | "acceptPrice" | "declinePrice" | "sendMoney" | "start" | "finish" | "confirmDone" | "problem";
 
-/* The Call button on a job. The other person's number is never in
-   the page payload and never printed anywhere: the button asks
-   the server for the call target only when it is tapped, and the
-   phone dials it. The number itself is never shown. */
-function JobCallButton({
-  jobId,
+type ChatMessage = ApiResponse<typeof api, "listJobMessages">["messages"][number];
+
+/* The chat on one job: the two people on the job talk inside the
+   app. Messages oldest at top, newest at the bottom, names only,
+   no phone numbers anywhere. The list refreshes by polling, like
+   the rest of the app. A Call button at the top starts an in-app
+   voice call. */
+function ChatScreen({
+  job,
   sessionToken,
-  label,
-  ariaLabel,
-  className,
+  otherName,
+  onBack,
+  onCall,
 }: {
-  jobId: number;
+  job: Job;
   sessionToken: string;
-  label: string;
-  ariaLabel: string;
-  className?: string;
+  otherName: string;
+  onBack: () => void;
+  onCall: () => void;
 }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  async function call() {
-    setFailed(false);
-    setBusy(true);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function load() {
     try {
-      const res = await api.getJobCallTarget({ jobId, sessionToken });
-      if (res.ok && res.callTarget) {
-        window.location.href = res.callTarget;
-      } else {
-        setFailed(true);
-      }
+      const res = await api.listJobMessages({ jobId: job.id, sessionToken });
+      setMessages(res.messages);
+    } catch { /* the next poll retries */ }
+  }
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id, sessionToken]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
+
+  async function send() {
+    const body = draft.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const res = await api.sendJobMessage({ jobId: job.id, sessionToken, body });
+      if (!res.ok) setFailed(true);
+      else { setDraft(""); await load(); }
     } catch {
       setFailed(true);
     }
     setBusy(false);
   }
+
   return (
-    <>
-      <button type="button" disabled={busy} onClick={call} className={className ?? "inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold"} style={darkBtnStyle} aria-label={ariaLabel}>
-        <PhoneIcon /> {busy ? "Calling..." : label}
+    <Screen title="Chat" onBack={onBack} layout="top">
+      <button type="button" onClick={onCall} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call ${otherName}`}>
+        <PhoneIcon /> Call {otherName.split(" ")[0]}
       </button>
-      {failed && <p className="text-center text-base font-semibold" style={{ color: "var(--danger)" }}>The call did not go through. Try again.</p>}
-    </>
+      <div className="mt-4 flex flex-col gap-2">
+        {messages.length === 0 && (
+          <p className="py-6 text-center text-base font-semibold text-[var(--dim)]">No messages yet.</p>
+        )}
+        {messages.map((m) => (
+          <div key={m.id} className={m.mine ? "self-end" : "self-start"} style={{ maxWidth: "85%" }}>
+            {!m.mine && <p className="mb-0.5 text-xs font-bold text-[var(--dim)]">{m.senderName.split(" ")[0]}</p>}
+            <div
+              className={m.mine ? "p-3.5 text-base font-semibold text-[var(--bg)]" : "glass p-3.5 text-base font-semibold text-[var(--text)]"}
+              style={m.mine ? { borderRadius: 12, background: "var(--text)" } : { borderRadius: 12 }}
+            >
+              {m.body}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      {failed && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>The message did not send. Try again.</p>}
+      <form
+        onSubmit={(e) => { e.preventDefault(); void send(); }}
+        className="mt-4 flex items-center gap-2"
+      >
+        <label className="sr-only" htmlFor="jw-chat-input">Write a message</label>
+        <input
+          id="jw-chat-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Write a message"
+          autoComplete="off"
+          className={`${bigInputCls} min-w-0 flex-1`}
+        />
+        <button type="submit" disabled={busy || !draft.trim()} className="px-5 py-3 text-lg font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Send the message">
+          Send
+        </button>
+      </form>
+    </Screen>
   );
+}
+
+/* An in-app voice call on one job, browser to browser over the
+   internet (WebRTC): no carrier, no phone numbers, nothing per
+   call to pay. Signaling rides the job's call_signals rows, which
+   both clients poll while this screen is open. Only a free public
+   STUN server is used; there is no TURN server, so on strict
+   mobile networks some calls may not connect, and Chat is the
+   fallback (the note says so when a call fails). */
+type CallPhase = "idle" | "calling" | "ringing" | "connected";
+
+function useJobCall(jobId: number, sessionToken: string, myProfileId: number, active: boolean) {
+  const [phase, setPhase] = useState<CallPhase>("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSignalRef = useRef(0);
+  const phaseRef = useRef<CallPhase>("idle");
+  phaseRef.current = phase;
+  const pendingOfferRef = useRef<string | null>(null);
+  const pendingCandidatesRef = useRef<string[]>([]);
+  const connectedAtRef = useRef(0);
+
+  async function send(kind: "ring" | "offer" | "answer" | "candidate" | "accept" | "decline" | "end", payload?: string) {
+    try {
+      await api.sendCallSignal({ jobId, sessionToken, kind, payload });
+    } catch { /* the other side polls; a lost row shows as a failed call */ }
+  }
+
+  function cleanup() {
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
+    if (pcRef.current) {
+      try { pcRef.current.close(); } catch { /* already closed */ }
+      pcRef.current = null;
+    }
+    pendingOfferRef.current = null;
+    pendingCandidatesRef.current = [];
+  }
+
+  function goIdle() {
+    cleanup();
+    phaseRef.current = "idle";
+    setPhase("idle");
+  }
+
+  async function flushCandidates(pc: RTCPeerConnection) {
+    const queued = pendingCandidatesRef.current;
+    pendingCandidatesRef.current = [];
+    for (const c of queued) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(c))); } catch { /* one bad candidate is not fatal */ }
+    }
+  }
+
+  async function makePc(): Promise<RTCPeerConnection | null> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      pc.ontrack = (e) => {
+        if (remoteAudioRef.current && e.streams[0]) remoteAudioRef.current.srcObject = e.streams[0];
+      };
+      pc.onicecandidate = (e) => {
+        if (e.candidate) void send("candidate", JSON.stringify(e.candidate.toJSON()));
+      };
+      pcRef.current = pc;
+      return pc;
+    } catch {
+      return null;
+    }
+  }
+
+  async function startCall() {
+    setNote(null);
+    const pc = await makePc();
+    if (!pc) { setNote("The call could not start. Use Chat instead."); return; }
+    phaseRef.current = "calling";
+    setPhase("calling");
+    await send("ring");
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await send("offer", JSON.stringify({ type: offer.type, sdp: offer.sdp }));
+    } catch {
+      goIdle();
+      setNote("The call could not start. Use Chat instead.");
+    }
+  }
+
+  async function acceptCall() {
+    const offerPayload = pendingOfferRef.current;
+    if (!offerPayload) { goIdle(); return; }
+    const pc = await makePc();
+    if (!pc) { goIdle(); setNote("The call could not start. Use Chat instead."); return; }
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(offerPayload)));
+      await flushCandidates(pc);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await send("accept");
+      await send("answer", JSON.stringify({ type: answer.type, sdp: answer.sdp }));
+      connectedAtRef.current = Date.now();
+      phaseRef.current = "connected";
+      setPhase("connected");
+    } catch {
+      goIdle();
+      setNote("The call could not connect. Use Chat instead.");
+    }
+  }
+
+  async function declineCall() {
+    await send("decline");
+    goIdle();
+  }
+
+  async function endCall() {
+    await send("end");
+    goIdle();
+  }
+
+  /* Poll the job's signals while the screen is open and react to
+     the other side's rows: ring and offer mean an incoming call,
+     answer completes my outgoing call, candidates feed the peer
+     connection, decline and end tear the call down. */
+  useEffect(() => {
+    if (!active) return;
+    const tick = async () => {
+      try {
+        const res = await api.listCallSignals({ jobId, sessionToken, sinceId: lastSignalRef.current });
+        for (const s of res.signals) {
+          lastSignalRef.current = Math.max(lastSignalRef.current, s.id);
+          if (s.fromProfileId === myProfileId) continue;
+          if (s.kind === "ring" || s.kind === "offer") {
+            if (s.kind === "offer") pendingOfferRef.current = s.payload;
+            if (phaseRef.current === "idle") {
+              setNote(null);
+              phaseRef.current = "ringing";
+              setPhase("ringing");
+            }
+          } else if (s.kind === "answer") {
+            if (phaseRef.current === "calling" && pcRef.current && s.payload) {
+              try {
+                await pcRef.current.setRemoteDescription(new RTCSessionDescription(JSON.parse(s.payload)));
+                await flushCandidates(pcRef.current);
+                connectedAtRef.current = Date.now();
+                phaseRef.current = "connected";
+                setPhase("connected");
+              } catch { /* a failed connect leaves the call ringing out; End call clears it */ }
+            }
+          } else if (s.kind === "candidate") {
+            if (!s.payload) continue;
+            if (pcRef.current && pcRef.current.remoteDescription) {
+              try { await pcRef.current.addIceCandidate(new RTCIceCandidate(JSON.parse(s.payload))); } catch { /* not fatal */ }
+            } else {
+              pendingCandidatesRef.current.push(s.payload);
+            }
+          } else if (s.kind === "decline") {
+            if (phaseRef.current === "calling") {
+              goIdle();
+              setNote("They could not take the call. Use Chat instead.");
+            }
+          } else if (s.kind === "end") {
+            if (phaseRef.current !== "idle") goIdle();
+          }
+        }
+      } catch { /* the next tick retries */ }
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 1500);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, sessionToken, myProfileId, active]);
+
+  useEffect(() => {
+    if (phase !== "connected") { setSeconds(0); return; }
+    const t = setInterval(() => setSeconds(Math.floor((Date.now() - connectedAtRef.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [phase]);
+
+  return { phase, seconds, note, remoteAudioRef, startCall, acceptCall, declineCall, endCall };
 }
 
 function JobScreen({
@@ -3295,6 +3501,14 @@ function JobScreen({
   const isWorker = job.providerId === profile.id || (job.providerPhone != null && samePhone(job.providerPhone, profile.phone));
   const publicView = !isCustomer && !isWorker && job.status === "open";
   const problemStatuses = ["price_proposed", "confirmed", "held", "in_progress", "worker_done"];
+  /* In-app contact: once a worker is accepted, the two people on
+     the job get Chat and in-app voice calls, for the job's whole
+     life. No phone numbers are involved anywhere. */
+  const otherName = isCustomer ? (job.providerName ?? "the worker") : job.customerName;
+  const canContact = (isCustomer || isWorker) && job.providerId != null && job.status !== "cancelled";
+  const [chatOpen, setChatOpen] = useState(false);
+  const call = useJobCall(job.id, sessionToken, profile.id, canContact);
+  const callClock = `${Math.floor(call.seconds / 60)}:${String(call.seconds % 60).padStart(2, "0")}`;
 
   async function runLifecycle(action: JobLifecycleAction, file?: File, amount?: number) {
     setLError(null);
@@ -3346,6 +3560,38 @@ function JobScreen({
     </div>
   );
 
+  const callPanel = canContact && call.phase !== "idle" && (
+    <div className="glass mt-4 p-5 text-center" style={{ borderRadius: 12 }}>
+      {call.phase === "calling" && (
+        <>
+          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Calling {otherName.split(" ")[0]}...</p>
+          <button type="button" onClick={() => void call.endCall()} className="mt-4 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
+            End call
+          </button>
+        </>
+      )}
+      {call.phase === "ringing" && (
+        <>
+          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{otherName} is calling you</p>
+          <button type="button" onClick={() => void call.acceptCall()} className="mt-4 w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Accept the call">
+            Accept
+          </button>
+          <button type="button" onClick={() => void call.declineCall()} className="w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="Decline the call">
+            Decline
+          </button>
+        </>
+      )}
+      {call.phase === "connected" && (
+        <>
+          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>On call · {callClock}</p>
+          <button type="button" onClick={() => void call.endCall()} className="mt-4 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
+            End call
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   const problemButton = problemStatuses.includes(job.status) && (
     job.problemReported ? (
       <p className="text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
@@ -3356,8 +3602,21 @@ function JobScreen({
     )
   );
 
+  if (chatOpen && canContact) {
+    return (
+      <ChatScreen
+        job={job}
+        sessionToken={sessionToken}
+        otherName={otherName}
+        onBack={() => setChatOpen(false)}
+        onCall={() => { setChatOpen(false); void call.startCall(); }}
+      />
+    );
+  }
+
   return (
     <Screen title={job.title} onBack={onBack} layout="top">
+      {canContact && <audio ref={call.remoteAudioRef} autoPlay className="hidden" aria-hidden="true" />}
       <JobFacts
         job={job}
         profile={profile}
@@ -3367,11 +3626,22 @@ function JobScreen({
         publicView={publicView}
       />
       {lError && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+      {canContact && (
+        <button type="button" onClick={() => setChatOpen(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Chat with ${otherName}`}>
+          Chat
+        </button>
+      )}
+      {callPanel}
+      {canContact && call.phase === "idle" && call.note && (
+        <p className="mt-3 text-center text-base font-semibold text-[var(--dim)]">{call.note}</p>
+      )}
 
       {isCustomer && (
         <div className="mt-4 flex flex-col gap-2.5">
           {job.providerId != null && job.status !== "completed" && job.status !== "cancelled" && (
-            <JobCallButton jobId={job.id} sessionToken={sessionToken} label="Call worker" ariaLabel={`Call worker ${job.providerName ?? ""}`} />
+            <button type="button" onClick={() => void call.startCall()} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call worker ${job.providerName ?? ""}`}>
+              <PhoneIcon /> Call worker
+            </button>
           )}
           {job.status === "accepted" && (
             <div className="glass p-5 text-center" style={{ borderRadius: 12 }}>
@@ -3449,7 +3719,9 @@ function JobScreen({
                 <span>When: {scheduleLabel(job)}</span>
                 <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{amountLabel(job) ?? "Price agreed by phone"}</span>
               </div>
-              <JobCallButton jobId={job.id} sessionToken={sessionToken} label={`Call ${job.customerName.split(" ")[0]}`} ariaLabel={`Call customer ${job.customerName}`} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" />
+              <button type="button" onClick={() => void call.startCall()} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
+                <PhoneIcon /> Call {job.customerName.split(" ")[0]}
+              </button>
               <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmCall")} className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="We talked, I understand the job, I can do it">
                 {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
               </button>
@@ -3482,7 +3754,9 @@ function JobScreen({
               )}
             </div>
           ) : job.status !== "completed" && job.status !== "cancelled" && (
-            <JobCallButton jobId={job.id} sessionToken={sessionToken} label={`Call ${job.customerName.split(" ")[0]}`} ariaLabel={`Call customer ${job.customerName}`} />
+            <button type="button" onClick={() => void call.startCall()} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
+              <PhoneIcon /> Call {job.customerName.split(" ")[0]}
+            </button>
           )}
           {job.status === "price_proposed" && (
             <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to answer the new price.</p>

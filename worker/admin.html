@@ -154,6 +154,7 @@
         "Poster: " + esc(j.posterName || "none") + " · Worker: " + esc(j.workerName || "none") + "<br>" +
         esc(j.place || "") + " · " + money(j) + "<br>" + esc(statusText(j)) +
         (j.problemReported ? ' · <span class="flag">Problem reported' + (j.problemBy ? " by " + esc(j.problemBy) : "") + "</span>" : "") +
+        (j.problemReported && j.chat && j.chat.length ? '<div class="d" style="margin-top:6px">Chat:<br>' + j.chat.map(function (m) { return esc(m.from) + ": " + esc(m.body); }).join("<br>") + "</div>" : "") +
         "</div></div>";
     }).join("") : '<p class="sub">No jobs yet.</p>';
     el("profiles").innerHTML = d.profiles.length ? d.profiles.map(function (p) {

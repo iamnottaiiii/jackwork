@@ -172,3 +172,29 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_profile ON push_subscriptions 
 -- The deploy runner skips any column that is already there.
 ALTER TABLE profiles ADD COLUMN terms_version INTEGER;
 ALTER TABLE profiles ADD COLUMN terms_agreed_at INTEGER;
+
+-- In-app chat on a job: one row per message, readable and writable
+-- only by the job's two parties (checked server side by token).
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL,
+  sender_profile_id INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- In-app voice call signaling (WebRTC): short-lived rows the two
+-- clients poll while a call is being set up (ring, offer, answer,
+-- candidate) or torn down (decline, end). No call audio ever
+-- touches the server. The call itself is browser to browser.
+CREATE TABLE IF NOT EXISTS call_signals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL,
+  from_profile_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  payload TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_job ON messages (job_id, id);
+CREATE INDEX IF NOT EXISTS idx_call_signals_job ON call_signals (job_id, id);
