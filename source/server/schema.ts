@@ -92,10 +92,16 @@ export const CATEGORIES = [
 export const JOB_STATUSES = [
   "open",
   "accepted",
+  "price_proposed",
+  "confirmed",
+  "held",
   "in_progress",
+  "worker_done",
   "completed",
   "cancelled",
 ] as const;
+
+export const JOB_PAYMENT_STATES = ["waiting", "held", "paid"] as const;
 
 export const VERIFICATION_STATUSES = ["unverified", "pending", "verified"] as const;
 
@@ -202,6 +208,33 @@ export const jobs = sqliteTable("jobs", {
   providerPhone: text("provider_phone"),
   /** The unified profile id of the worker who accepted the job. */
   providerId: integer("provider_id"),
+  /** When the worker confirmed, after calling the poster, that they will do the job. */
+  workerConfirmedAt: integer("worker_confirmed_at", { mode: "timestamp_ms" }),
+  /** A new price the worker proposed after the confirmation call, in the job's own currency. One round only: poster accepts it or releases the worker and the job returns to open at the original price. */
+  proposedBudgetAmount: integer("proposed_budget_amount"),
+  priceProposedAt: integer("price_proposed_at", { mode: "timestamp_ms" }),
+  /** Simulated Mobile Money state for the approved hold and release flow: waiting, held, or paid. No real money moves in this test launch. */
+  paymentState: text("payment_state", { enum: JOB_PAYMENT_STATES }).notNull().default("waiting"),
+  /** When the poster marked the simulated Mobile Money as sent and Jackwork marked it held. */
+  paymentMarkedAt: integer("payment_marked_at", { mode: "timestamp_ms" }),
+  /** Proof the worker supplied before starting: a picture, video, or audio recording stored as a blob. */
+  beforeProofBlobKey: text("before_proof_blob_key"),
+  beforeProofMime: text("before_proof_mime"),
+  /** Proof the worker supplied when marking the job done: a picture, video, or audio recording stored as a blob. */
+  afterProofBlobKey: text("after_proof_blob_key"),
+  afterProofMime: text("after_proof_mime"),
+  /** When the worker marked the job done. Poster confirmation or the automatic completion window runs from this moment. */
+  workerDoneAt: integer("worker_done_at", { mode: "timestamp_ms" }),
+  /** When the poster confirmed the job is done. */
+  posterConfirmedAt: integer("poster_confirmed_at", { mode: "timestamp_ms" }),
+  /** When the job reached completed, by poster confirmation or by the automatic safety valve. */
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  /** True when the safety valve completed the job because the poster did not act in time. */
+  autoCompleted: integer("auto_completed").notNull().default(0),
+  /** A problem reported by either side. It freezes automatic completion and flags the job for admin. */
+  problemReported: integer("problem_reported").notNull().default(0),
+  problemBy: text("problem_by"),
+  problemAt: integer("problem_at", { mode: "timestamp_ms" }),
   rating: integer("rating"),
   review: text("review"),
   payMethod: text("pay_method").notNull().default("Cash"),

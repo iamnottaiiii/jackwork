@@ -76,12 +76,29 @@ def main():
         stmt = "\n".join(lines).strip()
         if stmt:
             statements.append(stmt)
+    # Column names already on jobs, so ALTER TABLE ADD COLUMN
+    # statements for lifecycle fields can be skipped when present.
+    job_columns = set()
+    st, d = req_json("POST", f"/accounts/{ACCOUNT}/d1/database/{db_id}/query", {"sql": "PRAGMA table_info(jobs)"})
+    if d.get("success"):
+        for row in ((d.get("result") or [{}])[0].get("results") or []):
+            if row.get("name"):
+                job_columns.add(row["name"])
+    applied = 0
     for stmt in statements:
+        upper = stmt.upper()
+        if upper.startswith("ALTER TABLE JOBS ADD COLUMN"):
+            parts = stmt.split()
+            if len(parts) >= 6 and parts[5] in job_columns:
+                continue
         st, d = req_json("POST", f"/accounts/{ACCOUNT}/d1/database/{db_id}/query", {"sql": stmt})
         if not d.get("success"):
+            if "duplicate column name" in err_msg(d).lower():
+                continue
             print("SCHEMA FAILED on:", stmt[:80], st, err_msg(d))
             return 1
-    print(f"schema applied: {len(statements)} statements")
+        applied += 1
+    print(f"schema applied: {applied} statements")
 
     # 4. upload the worker script with the static build as data parts
     web = os.path.join(REPO, "web")

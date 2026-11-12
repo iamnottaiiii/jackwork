@@ -786,6 +786,21 @@ function distanceLabel(job: Job, profile: MyProfile | null): string | null {
   if (d < 1) return "Less than 1 km away";
   return `${Math.round(d)} km away`;
 }
+function distanceLabelMiles(job: Job, profile: MyProfile | null): string | null {
+  const km = placeDistanceKm(job, profile);
+  if (km == null) return null;
+  const miles = km * 0.621371;
+  if (miles < 1) return "Less than 1 mile away";
+  return `${Math.round(miles)} mile${Math.round(miles) === 1 ? "" : "s"} away`;
+}
+function amountLabel(job: Job): string | null {
+  if (job.budgetAmount == null) return null;
+  const sym = job.budgetCurrency === "LRD" ? "LD " : "$";
+  return `${sym}${job.budgetAmount.toLocaleString()}`;
+}
+function boardPlace(job: Job): string {
+  return job.landmark?.trim() ? job.landmark.trim() : (job.location.split(",")[0]?.trim() || job.location);
+}
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(ms / 60000);
@@ -805,7 +820,11 @@ function statusLabel(s: string): string {
   switch (s) {
     case "open": return "Open";
     case "accepted": return "Accepted";
-    case "in_progress": return "Work started";
+    case "price_proposed": return "New price";
+    case "confirmed": return "Confirmed";
+    case "held": return "Money held";
+    case "in_progress": return "Working";
+    case "worker_done": return "Waiting for poster";
     case "completed": return "Done";
     case "cancelled": return "Cancelled";
     default: return s;
@@ -933,7 +952,11 @@ function StatusPill({ status }: { status: string }) {
   const map: Record<string, { bg: string; fg: string }> = {
     open: { bg: "var(--yellow)", fg: "var(--yellow-ink)" },
     accepted: { bg: "var(--surface2)", fg: "var(--text)" },
+    price_proposed: { bg: "var(--surface2)", fg: "var(--text)" },
+    confirmed: { bg: "var(--surface2)", fg: "var(--text)" },
+    held: { bg: "var(--surface2)", fg: "var(--text)" },
     in_progress: { bg: "var(--surface2)", fg: "var(--text)" },
+    worker_done: { bg: "var(--surface2)", fg: "var(--text)" },
     completed: { bg: "var(--text)", fg: "var(--bg)" },
     cancelled: { bg: "var(--surface2)", fg: "var(--dim)" },
   };
@@ -960,7 +983,7 @@ function VerifiedBadge({ status }: { status: string }) {
 function StatusSteps({ status }: { status: string }) {
   if (status === "cancelled") return null;
   const steps = ["Posted", "Accepted", "Working", "Done"];
-  const idx = status === "open" ? 0 : status === "accepted" ? 1 : status === "in_progress" ? 2 : 3;
+  const idx = status === "open" ? 0 : status === "accepted" || status === "price_proposed" || status === "confirmed" || status === "held" ? 1 : status === "in_progress" || status === "worker_done" ? 2 : 3;
   return (
     <div className="flex items-center gap-1" aria-label={`Job status: ${steps[idx]}`}>
       {steps.map((label, i) => (
@@ -1156,10 +1179,29 @@ function PickRow({ label, sub, icon, onClick, ariaLabel, selected }: { label: st
   );
 }
 
-/** The facts of ONE job, nothing else. */
-function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse }: { job: Job; profile: MyProfile | null; customerPhotoUrl?: string | null; workerPhotoUrl?: string | null; showHouse?: boolean }) {
+/** The facts of ONE job, nothing else. On the public board view of an
+    open job this is only the board facts: title, amount, when, miles,
+    and the town or community. */
+function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse, publicView }: { job: Job; profile: MyProfile | null; customerPhotoUrl?: string | null; workerPhotoUrl?: string | null; showHouse?: boolean; publicView?: boolean }) {
   const price = money(job);
-  const dist = distanceLabel(job, profile);
+  const dist = publicView ? distanceLabelMiles(job, profile) : distanceLabel(job, profile);
+  if (publicView) {
+    return (
+      <div className="glass p-5" style={{ borderRadius: 12 }}>
+        <h2 className="text-2xl font-black leading-snug text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{job.title}</h2>
+        <div className="mt-4 grid gap-2 text-base font-semibold text-[var(--text)]">
+          <span className="inline-flex items-center gap-2"><PinIcon />{boardPlace(job)}</span>
+          {dist && (
+            <span>
+              <span className="inline-flex items-center px-2.5 py-1 text-sm font-black" style={{ background: "var(--text)", color: "var(--bg)", borderRadius: 12 }}>{dist}</span>
+            </span>
+          )}
+          <span>When: {scheduleLabel(job)}</span>
+          <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{price ?? "Price agreed by phone"}</span>
+        </div>
+      </div>
+    );
+  }
   const near = (() => {
     if (!profile) return null;
     const [cityPart = "", countyPart = ""] = job.location.split(",");
@@ -1199,6 +1241,30 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse }:
           <span className="inline-flex items-start gap-2"><PinIcon /> House: {job.houseDirections}</span>
         )}
         <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{price ?? "Price agreed by phone"} · Pay by {job.payMethod}</span>
+        {job.paymentState === "held" && job.status !== "completed" && (
+          <span className="font-extrabold">Jackwork has the money</span>
+        )}
+        {job.status === "confirmed" && (
+          <span>Waiting for Mobile Money</span>
+        )}
+        {job.status === "price_proposed" && job.proposedBudgetAmount != null && (
+          <span className="font-extrabold">New price: {job.budgetCurrency === "LRD" ? "LD " : "$"}{job.proposedBudgetAmount.toLocaleString()}</span>
+        )}
+        {job.status === "worker_done" && (
+          <span>Worker says the job is done</span>
+        )}
+        {job.status === "completed" && profile && job.providerId === profile.id && (
+          <span className="font-extrabold">Jackwork sent {amountLabel(job) ?? "the money"} to your Mobile Money</span>
+        )}
+        {job.problemReported && (
+          <span className="font-extrabold" style={{ color: "var(--danger)" }}>Problem reported</span>
+        )}
+        {job.beforeProofUrl && (
+          <a href={job.beforeProofUrl} target="_blank" rel="noopener" className="font-extrabold underline underline-offset-2" aria-label="Open the before proof">Before proof</a>
+        )}
+        {job.afterProofUrl && (
+          <a href={job.afterProofUrl} target="_blank" rel="noopener" className="font-extrabold underline underline-offset-2" aria-label="Open the after proof">After proof</a>
+        )}
       </div>
       {job.gpsLat != null && job.gpsLng != null && (() => {
         const url = mapsDirectionsUrl({ label: job.title, lat: job.gpsLat, lng: job.gpsLng }) as string | null;
@@ -1226,7 +1292,7 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse }:
           </div>
         </div>
       )}
-      {(job.status === "accepted" || job.status === "in_progress" || job.status === "completed") && (
+      {(job.status === "accepted" || job.status === "price_proposed" || job.status === "confirmed" || job.status === "held" || job.status === "in_progress" || job.status === "worker_done" || job.status === "completed") && (
         <div className="mt-4">
           <StatusSteps status={job.status} />
         </div>
@@ -2491,7 +2557,6 @@ function BoardFlow({
   profile,
   openJobs,
   loading,
-  photoByProfileId,
   placeByProfileId,
   onExit,
   onOpenJob,
@@ -2499,7 +2564,6 @@ function BoardFlow({
   profile: MyProfile;
   openJobs: Job[];
   loading: boolean;
-  photoByProfileId: Map<number, string | null>;
   placeByProfileId: Map<number, PlaceFields>;
   onExit: () => void;
   onOpenJob: (job: Job) => void;
@@ -2628,9 +2692,7 @@ function BoardFlow({
         <div className="mt-4 flex flex-col gap-2.5 lg:grid lg:grid-cols-2">
           {list.map((j) => {
             const price = money(j);
-            const dist = distanceLabel(j, profile);
-            const near = areaLabel(j.customerProfileId != null ? (placeByProfileId.get(j.customerProfileId) ?? null) : null, placeOf(profile));
-            const wanted = prefs.includes(j.category);
+            const dist = distanceLabelMiles(j, profile);
             return (
               <button
                 key={j.id}
@@ -2638,7 +2700,7 @@ function BoardFlow({
                 onClick={() => onOpenJob(j)}
                 className="glass flex w-full items-center gap-3 p-4 text-left active:opacity-80"
                 style={{ borderRadius: 12, minHeight: 76 }}
-                aria-label={`Open job: ${j.title}, ${j.category}, in ${j.location}, on ${scheduleLabel(j)}`}
+                aria-label={`Open job: ${j.title}, in ${boardPlace(j)}, on ${scheduleLabel(j)}`}
               >
                 <span className="flex shrink-0 items-center justify-center" style={{ width: 50, height: 50, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
                   <ServiceIcon icon={serviceOf(j.category)?.icon ?? "toolbox"} size={27} color="var(--bg)" />
@@ -2646,17 +2708,14 @@ function BoardFlow({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-lg font-extrabold leading-tight text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{j.title}</span>
                   <span className="block truncate text-sm font-semibold text-[var(--dim)]">
-                    {j.category} · {j.location} · {timeAgo(j.createdAt)}
+                    {boardPlace(j)}
                   </span>
                   <span className="block truncate text-sm font-extrabold text-[var(--text)]">{scheduleLabel(j)}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                     <span className="text-sm font-extrabold text-[var(--text)]">{price ?? "Price by phone"}</span>
                     {dist && <span className="px-2 py-0.5 text-xs font-black" style={{ background: "var(--text)", color: "var(--bg)", borderRadius: 12 }}>{dist}</span>}
-                    {near && <span className="px-2 py-0.5 text-xs font-black" style={{ background: "var(--text)", color: "var(--bg)", borderRadius: 12 }}>{near}</span>}
-                    {wanted && <span className="px-2 py-0.5 text-xs font-black" style={{ background: "var(--yellow)", color: "var(--yellow-ink)", borderRadius: 12 }}>Work you want</span>}
                   </span>
                 </span>
-                <Avatar name={j.customerName} photoUrl={j.customerProfileId != null ? photoByProfileId.get(j.customerProfileId) : null} size={40} />
               </button>
             );
           })}
@@ -2756,6 +2815,8 @@ function MyJobsFlow({
 /* ================================================================
    ONE JOB — a single job on its own screen.
    ================================================================ */
+type JobLifecycleAction = "confirmCall" | "proposePrice" | "acceptPrice" | "declinePrice" | "sendMoney" | "start" | "finish" | "confirmDone" | "problem";
+
 function JobScreen({
   job,
   profile,
@@ -2765,21 +2826,92 @@ function JobScreen({
   onDelete,
   onRate,
   onAccept,
+  onLifecycle,
 }: {
   job: Job;
   profile: MyProfile;
   photoByProfileId: Map<number, string | null>;
   onBack: () => void;
-  onStatus: (job: Job, status: "open" | "in_progress" | "completed" | "cancelled") => void;
+  onStatus: (job: Job, status: "open" | "cancelled") => void;
   onDelete: (job: Job) => void;
   onRate: (job: Job, side: "worker" | "customer") => void;
   onAccept: (job: Job) => Promise<{ ok: boolean; error: string | null }>;
+  onLifecycle: (job: Job, action: JobLifecycleAction, file?: File, amount?: number) => Promise<{ ok: boolean; error: string | null }>;
 }) {
   const [aBusy, setABusy] = useState(false);
   const [aError, setAError] = useState<string | null>(null);
+  const [lBusy, setLBusy] = useState(false);
+  const [lError, setLError] = useState<string | null>(null);
+  const [proofStage, setProofStage] = useState<"before" | "after" | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [showPriceChange, setShowPriceChange] = useState(false);
+  const [newPrice, setNewPrice] = useState("");
+  const proofRef = useRef<HTMLInputElement>(null);
   const isCustomer = job.customerProfileId === profile.id || samePhone(job.customerPhone, profile.phone);
   const isWorker = job.providerId === profile.id || (job.providerPhone != null && samePhone(job.providerPhone, profile.phone));
   const callNumber = job.contactPhone ?? job.customerPhone;
+  const publicView = !isCustomer && !isWorker && job.status === "open";
+  const problemStatuses = ["price_proposed", "confirmed", "held", "in_progress", "worker_done"];
+
+  async function runLifecycle(action: JobLifecycleAction, file?: File, amount?: number) {
+    setLError(null);
+    setLBusy(true);
+    const res = await onLifecycle(job, action, file, amount);
+    setLBusy(false);
+    if (!res.ok) {
+      setLError(res.error ?? "That did not work. Try again.");
+      return;
+    }
+    setProofStage(null);
+    setProofFile(null);
+  }
+
+  const proofPanel = proofStage && (
+    <div className="glass p-5" style={{ borderRadius: 12 }}>
+      <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{proofStage === "before" ? "Before you start" : "After the job"}</p>
+      <p className="mt-1.5 text-base font-semibold text-[var(--dim)]">Take or pick a picture or recording, or skip.</p>
+      <input
+        ref={proofRef}
+        type="file"
+        accept="image/*,video/*,audio/*"
+        className="hidden"
+        aria-label={proofStage === "before" ? "Before proof file" : "After proof file"}
+        onChange={(e) => { setProofFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
+      />
+      <button type="button" onClick={() => proofRef.current?.click()} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label="Take or pick proof">
+        <ServiceIcon icon="camera" size={22} /> {proofFile ? proofFile.name : "Take or pick proof"}
+      </button>
+      <button
+        type="button"
+        disabled={!proofFile || lBusy}
+        onClick={() => runLifecycle(proofStage === "before" ? "start" : "finish", proofFile ?? undefined)}
+        className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40"
+        style={primaryBtnStyle}
+        aria-label={proofStage === "before" ? "Use this proof and start work" : "Use this proof and mark job done"}
+      >
+        {lBusy ? "Sending..." : "Use this proof"}
+      </button>
+      <button
+        type="button"
+        disabled={lBusy}
+        onClick={() => runLifecycle(proofStage === "before" ? "start" : "finish")}
+        className="w-full py-3 text-base font-bold text-[var(--dim)] disabled:opacity-40"
+        aria-label={proofStage === "before" ? "Skip proof and start work" : "Skip proof and mark job done"}
+      >
+        Skip
+      </button>
+    </div>
+  );
+
+  const problemButton = problemStatuses.includes(job.status) && (
+    job.problemReported ? (
+      <p className="text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
+    ) : (
+      <button type="button" disabled={lBusy} onClick={() => runLifecycle("problem")} className="w-full py-3 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="Report a problem with this job">
+        Problem
+      </button>
+    )
+  );
 
   return (
     <Screen title={job.title} onBack={onBack} layout="top">
@@ -2789,7 +2921,9 @@ function JobScreen({
         customerPhotoUrl={job.customerProfileId != null ? photoByProfileId.get(job.customerProfileId) : null}
         workerPhotoUrl={job.providerId != null ? photoByProfileId.get(job.providerId) : null}
         showHouse={isCustomer || isWorker}
+        publicView={publicView}
       />
+      {lError && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
 
       {isCustomer && (
         <div className="mt-4 flex flex-col gap-2.5">
@@ -2798,12 +2932,40 @@ function JobScreen({
               <PhoneIcon /> Call worker
             </a>
           )}
-          {(job.status === "accepted" || job.status === "in_progress") && (
-            <button type="button" onClick={() => onStatus(job, "completed")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Confirm the job is done">
-              Confirm job done
+          {job.status === "accepted" && (
+            <div className="glass p-5 text-center" style={{ borderRadius: 12 }}>
+              <p className="text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>The worker will call to talk through the job.</p>
+            </div>
+          )}
+          {job.status === "price_proposed" && job.proposedBudgetAmount != null && (
+            <div className="glass p-5" style={{ borderRadius: 12 }}>
+              <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>New price</p>
+              <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{job.budgetCurrency === "LRD" ? "LD " : "$"}{job.proposedBudgetAmount.toLocaleString()}</p>
+              <p className="mt-1 text-center text-base font-semibold text-[var(--dim)]">Was {amountLabel(job) ?? "agreed by phone"}</p>
+              <button type="button" disabled={lBusy} onClick={() => runLifecycle("acceptPrice")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Accept the new price">
+                {lBusy ? "Saving..." : "Accept new price"}
+              </button>
+              <button type="button" disabled={lBusy} onClick={() => runLifecycle("declinePrice")} className="w-full py-3 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="No, do not accept the new price">
+                No
+              </button>
+            </div>
+          )}
+          {job.status === "confirmed" && (
+            <div className="glass p-5" style={{ borderRadius: 12 }}>
+              <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Waiting for Mobile Money</p>
+              <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{amountLabel(job) ?? "Price agreed by phone"}</p>
+              <button type="button" disabled={lBusy} onClick={() => runLifecycle("sendMoney")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="I sent the Mobile Money">
+                {lBusy ? "Sending..." : "I sent the Mobile Money"}
+              </button>
+            </div>
+          )}
+          {job.status === "worker_done" && (
+            <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmDone")} className="w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Confirm the job is done">
+              {lBusy ? "Confirming..." : "Confirm job is done"}
             </button>
           )}
-          {(job.status === "open" || job.status === "accepted" || job.status === "in_progress") && (
+          {problemButton}
+          {(job.status === "open" || job.status === "accepted" || job.status === "confirmed" || job.status === "held") && (
             <button type="button" onClick={() => onStatus(job, "cancelled")} className="w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label={job.status === "open" ? "Cancel this posting" : "Cancel this job"}>
               {job.status === "open" ? "Cancel posting" : "Cancel job"}
             </button>
@@ -2829,25 +2991,91 @@ function JobScreen({
 
       {isWorker && !isCustomer && (
         <div className="mt-4 flex flex-col gap-2.5">
-          {job.status !== "completed" && job.status !== "cancelled" && (
+          {job.status === "accepted" ? (
+            <div className="glass p-5" style={{ borderRadius: 12 }}>
+              <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Call to understand the job</p>
+              <p className="mt-3 text-lg font-extrabold text-[var(--text)]">{job.task ?? job.title}</p>
+              {job.description && <p className="mt-1.5 text-base leading-relaxed text-[var(--dim)]">{job.description}</p>}
+              <div className="mt-4 grid gap-1.5 text-base font-semibold text-[var(--text)]">
+                <span>Call before you go.</span>
+                <span>Talk through what the work is.</span>
+                <span>Talk through what is happening, and what needs to be done.</span>
+                <span>Be sure the job is the size you expect.</span>
+              </div>
+              <div className="mt-4 grid gap-2 border-t border-[var(--border)] pt-4 text-base font-semibold text-[var(--text)]">
+                <span className="inline-flex items-start gap-2"><PinIcon />{job.location}{job.landmark ? ` · ${job.landmark}` : ""}</span>
+                {job.houseDirections && <span className="inline-flex items-start gap-2"><PinIcon /> House: {job.houseDirections}</span>}
+                <span>When: {scheduleLabel(job)}</span>
+                <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{amountLabel(job) ?? "Price agreed by phone"}</span>
+              </div>
+              <a href={`tel:${digits(callNumber)}`} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
+                <PhoneIcon /> Call {job.customerName.split(" ")[0]}
+              </a>
+              <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmCall")} className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="We talked, I understand the job, I can do it">
+                {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
+              </button>
+              {!showPriceChange ? (
+                <button type="button" onClick={() => setShowPriceChange(true)} className="w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Change the price">
+                  Change price
+                </button>
+              ) : (
+                <div className="mt-2">
+                  <label htmlFor="jw-new-price" className="mb-1.5 block text-base font-bold text-[var(--text)]">New price ({job.budgetCurrency === "LRD" ? "LD" : "USD"})</label>
+                  <input
+                    id="jw-new-price"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                    inputMode="numeric"
+                    className={`${bigInputCls} mx-auto w-full max-w-[300px]`}
+                    aria-label={`New price in ${job.budgetCurrency === "LRD" ? "Liberian dollars" : "US dollars"}`}
+                  />
+                  <button
+                    type="button"
+                    disabled={lBusy || !newPrice || Number(newPrice) <= 0}
+                    onClick={() => runLifecycle("proposePrice", undefined, Number(newPrice))}
+                    className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40"
+                    style={primaryBtnStyle}
+                    aria-label="Send the new price"
+                  >
+                    {lBusy ? "Sending..." : "Send new price"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : job.status !== "completed" && job.status !== "cancelled" && (
             <a href={`tel:${digits(callNumber)}`} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
               <PhoneIcon /> Call {job.customerName.split(" ")[0]}
             </a>
           )}
-          {job.status === "accepted" && (
-            <button type="button" onClick={() => onStatus(job, "in_progress")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Start work on this job">
+          {job.status === "price_proposed" && (
+            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to answer the new price.</p>
+          )}
+          {job.status === "confirmed" && (
+            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for Mobile Money.</p>
+          )}
+          {job.status === "held" && proofStage !== "before" && (
+            <button type="button" onClick={() => { setProofFile(null); setProofStage("before"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Start work on this job">
               Start work
             </button>
           )}
-          {job.status === "in_progress" && (
-            <button type="button" onClick={() => onStatus(job, "completed")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Mark this job done">
-              Mark job done
+          {job.status === "held" && proofPanel}
+          {job.status === "in_progress" && proofStage !== "after" && (
+            <button type="button" onClick={() => { setProofFile(null); setProofStage("after"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Mark this job done">
+              Job done
             </button>
           )}
-          {(job.status === "accepted" || job.status === "in_progress") && (
+          {job.status === "in_progress" && proofPanel}
+          {job.status === "worker_done" && (
+            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to confirm.</p>
+          )}
+          {problemButton}
+          {(job.status === "accepted" || job.status === "confirmed") && (
             <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
               Release job
             </button>
+          )}
+          {job.status === "completed" && (
+            <p className="text-center text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Jackwork sent {amountLabel(job) ?? "the money"} to your Mobile Money</p>
           )}
           {job.status === "completed" && job.rating != null && (
             <p className="text-center text-base font-semibold text-[var(--dim)]">The customer rated you {job.rating} of 5.{job.review ? ` “${job.review}”` : ""}</p>
@@ -3282,7 +3510,7 @@ export function App() {
     [jobs, profile],
   );
   const myActiveCount = useMemo(
-    () => [...myPosted, ...myAccepted].filter((j) => j.status === "accepted" || j.status === "in_progress" || j.status === "open").length,
+    () => [...myPosted, ...myAccepted].filter((j) => ["open", "accepted", "price_proposed", "confirmed", "held", "in_progress", "worker_done"].includes(j.status)).length,
     [myPosted, myAccepted],
   );
   const openJob = useMemo(() => jobs.find((j) => j.id === openJobId) ?? null, [jobs, openJobId]);
@@ -3317,7 +3545,7 @@ export function App() {
   }
 
   const statusMut = useMutation({
-    mutationFn: async (args: { job: Job; status: "open" | "in_progress" | "completed" | "cancelled" }) =>
+    mutationFn: async (args: { job: Job; status: "open" | "cancelled" }) =>
       api.updateJobStatus({ jobId: args.job.id, status: args.status }),
     onSuccess: () => queryClient.invalidateQueries(),
   });
@@ -3338,11 +3566,40 @@ export function App() {
 
   async function handleAccept(job: Job): Promise<{ ok: boolean; error: string | null }> {
     if (!profile) return { ok: false, error: "Sign in first." };
-    const res = await api.acceptJob({ jobId: job.id, providerProfileId: profile.id });
+    const res = await api.acceptJob({ jobId: job.id, providerProfileId: profile.id, providerSessionToken: storedToken });
     if (res.ok) {
       await queryClient.invalidateQueries();
       flash(`You accepted “${job.title}”.`);
     }
+    return res;
+  }
+
+  async function handleLifecycle(job: Job, action: JobLifecycleAction, file?: File, amount?: number): Promise<{ ok: boolean; error: string | null }> {
+    if (!profile) return { ok: false, error: "Sign in first." };
+    let res: { ok: boolean; error: string | null };
+    if (action === "confirmCall") {
+      res = await api.confirmJobAfterCall({ jobId: job.id, sessionToken: storedToken });
+    } else if (action === "proposePrice") {
+      if (!amount || amount <= 0) return { ok: false, error: "Enter the new price." };
+      res = await api.proposeJobPrice({ jobId: job.id, sessionToken: storedToken, amount });
+    } else if (action === "acceptPrice" || action === "declinePrice") {
+      res = await api.respondToJobPrice({ jobId: job.id, sessionToken: storedToken, accept: action === "acceptPrice" });
+    } else if (action === "sendMoney") {
+      res = await api.markMobileMoneySent({ jobId: job.id, sessionToken: storedToken });
+    } else if (action === "start" || action === "finish") {
+      const proof = file ? await fileToBase64(file) : null;
+      const args = {
+        jobId: job.id,
+        sessionToken: storedToken,
+        ...(proof ? { dataBase64: proof.dataBase64, mimeType: proof.mimeType } : {}),
+      };
+      res = action === "start" ? await api.startJob(args) : await api.finishJob(args);
+    } else if (action === "confirmDone") {
+      res = await api.confirmJobDone({ jobId: job.id, sessionToken: storedToken });
+    } else {
+      res = await api.reportJobProblem({ jobId: job.id, sessionToken: storedToken });
+    }
+    if (res.ok) await queryClient.invalidateQueries();
     return res;
   }
 
@@ -3480,7 +3737,6 @@ export function App() {
             profile={profile}
             openJobs={openJobs}
             loading={jobsQ.isPending}
-            photoByProfileId={photoByProfileId}
             placeByProfileId={placeByProfileId}
             onExit={() => setScreen("start")}
             onOpenJob={(job) => goToJob(job, "board")}
@@ -3509,6 +3765,7 @@ export function App() {
               onDelete={(job) => deleteMut.mutate(job)}
               onRate={(job, side) => { setRateTarget({ job, side }); setScreen("rate"); }}
               onAccept={handleAccept}
+              onLifecycle={handleLifecycle}
             />
           ) : (
             <Screen title="That job is gone" onBack={() => setScreen(jobReturn)}>

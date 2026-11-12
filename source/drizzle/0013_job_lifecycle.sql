@@ -1,0 +1,16 @@
+ALTER TABLE jobs ADD COLUMN worker_confirmed_at integer;
+ALTER TABLE jobs ADD COLUMN proposed_budget_amount integer;
+ALTER TABLE jobs ADD COLUMN price_proposed_at integer;
+ALTER TABLE jobs ADD COLUMN payment_state text DEFAULT 'waiting' NOT NULL;
+ALTER TABLE jobs ADD COLUMN payment_marked_at integer;
+ALTER TABLE jobs ADD COLUMN before_proof_blob_key text;
+ALTER TABLE jobs ADD COLUMN before_proof_mime text;
+ALTER TABLE jobs ADD COLUMN after_proof_blob_key text;
+ALTER TABLE jobs ADD COLUMN after_proof_mime text;
+ALTER TABLE jobs ADD COLUMN worker_done_at integer;
+ALTER TABLE jobs ADD COLUMN poster_confirmed_at integer;
+ALTER TABLE jobs ADD COLUMN completed_at integer;
+ALTER TABLE jobs ADD COLUMN auto_completed integer DEFAULT 0 NOT NULL;
+ALTER TABLE jobs ADD COLUMN problem_reported integer DEFAULT 0 NOT NULL;
+ALTER TABLE jobs ADD COLUMN problem_by text;
+ALTER TABLE jobs ADD COLUMN problem_at integer;

@@ -74,6 +74,22 @@ CREATE TABLE IF NOT EXISTS jobs (
   provider_name TEXT,
   provider_phone TEXT,
   provider_id INTEGER,
+  worker_confirmed_at INTEGER,
+  proposed_budget_amount INTEGER,
+  price_proposed_at INTEGER,
+  payment_state TEXT NOT NULL DEFAULT 'waiting',
+  payment_marked_at INTEGER,
+  before_proof_blob_key TEXT,
+  before_proof_mime TEXT,
+  after_proof_blob_key TEXT,
+  after_proof_mime TEXT,
+  worker_done_at INTEGER,
+  poster_confirmed_at INTEGER,
+  completed_at INTEGER,
+  auto_completed INTEGER NOT NULL DEFAULT 0,
+  problem_reported INTEGER NOT NULL DEFAULT 0,
+  problem_by TEXT,
+  problem_at INTEGER,
   rating INTEGER,
   review TEXT,
   pay_method TEXT NOT NULL DEFAULT 'Cash',
@@ -91,6 +107,25 @@ CREATE TABLE IF NOT EXISTS blobs (
   data BLOB NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+-- Lifecycle columns for databases created before the job lifecycle
+-- existed. The deploy runner skips any column that is already there.
+ALTER TABLE jobs ADD COLUMN worker_confirmed_at INTEGER;
+ALTER TABLE jobs ADD COLUMN proposed_budget_amount INTEGER;
+ALTER TABLE jobs ADD COLUMN price_proposed_at INTEGER;
+ALTER TABLE jobs ADD COLUMN payment_state TEXT NOT NULL DEFAULT 'waiting';
+ALTER TABLE jobs ADD COLUMN payment_marked_at INTEGER;
+ALTER TABLE jobs ADD COLUMN before_proof_blob_key TEXT;
+ALTER TABLE jobs ADD COLUMN before_proof_mime TEXT;
+ALTER TABLE jobs ADD COLUMN after_proof_blob_key TEXT;
+ALTER TABLE jobs ADD COLUMN after_proof_mime TEXT;
+ALTER TABLE jobs ADD COLUMN worker_done_at INTEGER;
+ALTER TABLE jobs ADD COLUMN poster_confirmed_at INTEGER;
+ALTER TABLE jobs ADD COLUMN completed_at INTEGER;
+ALTER TABLE jobs ADD COLUMN auto_completed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN problem_reported INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN problem_by TEXT;
+ALTER TABLE jobs ADD COLUMN problem_at INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_profiles_session_token ON profiles (session_token);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);

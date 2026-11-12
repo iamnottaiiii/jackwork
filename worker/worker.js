@@ -84,6 +84,13 @@ function blobUrl(key) {
   return "/blobs/" + key.split("/").map(encodeURIComponent).join("/");
 }
 
+/* Placeholder safety valve: if the poster does not confirm or report
+   a problem within this window after the worker marks the job done,
+   the job completes automatically and the simulated payout shows. */
+const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
+
+const ADMIN_PHONE = "+12297120887";
+
 async function allRows(env, sql, params = []) {
   const r = await env.DB.prepare(sql).bind(...params).all();
   return r.results || [];
@@ -97,14 +104,22 @@ async function runSql(env, sql, params = []) {
 
 /* ---------------- row shaping (same shapes as the Space) ---------------- */
 
-function toJob(row, stripPrivate = false) {
+function publicPlace(row) {
+  if (row.landmark && String(row.landmark).trim()) return String(row.landmark).trim();
+  return String(row.location ?? "").split(",")[0]?.trim() || row.location;
+}
+
+function toJob(row, isParty = false) {
+  const stripPrivate = !isParty;
+  const publicBoard = stripPrivate && row.status === "open";
+  const iso = (v) => (v == null ? null : new Date(v).toISOString());
   return {
     id: row.id,
     title: row.title,
-    category: row.category,
-    description: row.description,
-    location: row.location,
-    landmark: row.landmark ?? null,
+    category: publicBoard ? "" : row.category,
+    description: publicBoard ? "" : row.description,
+    location: publicBoard ? publicPlace(row) : row.location,
+    landmark: publicBoard ? null : (row.landmark ?? null),
     budgetAmount: row.budget_amount ?? null,
     budgetCurrency: row.budget_currency,
     budgetType: row.budget_type,
@@ -116,28 +131,76 @@ function toJob(row, stripPrivate = false) {
     // other board viewers. placeLat/placeLng stay: they are the surveyed
     // coordinates of a named town from the public settlement dataset.
     houseDirections: stripPrivate ? null : (row.house_directions ?? null),
-    customerName: row.customer_name,
+    customerName: publicBoard ? "" : row.customer_name,
     customerPhone: stripPrivate ? "" : row.customer_phone,
     contactPhone: stripPrivate ? null : (row.contact_phone ?? null),
-    task: row.task ?? null,
-    customerProfileId: row.customer_profile_id ?? null,
+    task: publicBoard ? null : (row.task ?? null),
+    customerProfileId: publicBoard ? null : (row.customer_profile_id ?? null),
     gpsLat: stripPrivate ? null : (row.gps_lat ?? null),
     gpsLng: stripPrivate ? null : (row.gps_lng ?? null),
     placeLat: row.place_lat ?? null,
     placeLng: row.place_lng ?? null,
     status: row.status,
-    providerName: row.provider_name ?? null,
+    providerName: publicBoard ? null : (row.provider_name ?? null),
     providerPhone: stripPrivate ? null : (row.provider_phone ?? null),
-    providerId: row.provider_id ?? null,
-    rating: row.rating ?? null,
-    review: row.review ?? null,
+    providerId: publicBoard ? null : (row.provider_id ?? null),
+    workerConfirmedAt: publicBoard ? null : iso(row.worker_confirmed_at),
+    proposedBudgetAmount: publicBoard ? null : (row.proposed_budget_amount ?? null),
+    priceProposedAt: publicBoard ? null : iso(row.price_proposed_at),
+    paymentState: row.payment_state ?? "waiting",
+    paymentMarkedAt: publicBoard ? null : iso(row.payment_marked_at),
+    beforeProofUrl: stripPrivate || !row.before_proof_blob_key ? null : blobUrl(row.before_proof_blob_key),
+    beforeProofMime: stripPrivate ? null : (row.before_proof_mime ?? null),
+    afterProofUrl: stripPrivate || !row.after_proof_blob_key ? null : blobUrl(row.after_proof_blob_key),
+    afterProofMime: stripPrivate ? null : (row.after_proof_mime ?? null),
+    workerDoneAt: publicBoard ? null : iso(row.worker_done_at),
+    posterConfirmedAt: publicBoard ? null : iso(row.poster_confirmed_at),
+    completedAt: publicBoard ? null : iso(row.completed_at),
+    autoCompleted: publicBoard ? false : row.auto_completed === 1,
+    problemReported: publicBoard ? false : row.problem_reported === 1,
+    problemBy: publicBoard ? null : (row.problem_by ?? null),
+    problemAt: publicBoard ? null : iso(row.problem_at),
+    rating: publicBoard ? null : (row.rating ?? null),
+    review: publicBoard ? null : (row.review ?? null),
     payMethod: "Mobile Money",
-    ratingByProvider: row.rating_by_provider ?? null,
-    reviewByProvider: row.review_by_provider ?? null,
-    createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString(),
+    ratingByProvider: publicBoard ? null : (row.rating_by_provider ?? null),
+    reviewByProvider: publicBoard ? null : (row.review_by_provider ?? null),
+    createdAt: publicBoard ? new Date(0).toISOString() : new Date(row.created_at).toISOString(),
+    updatedAt: publicBoard ? new Date(0).toISOString() : new Date(row.updated_at).toISOString(),
   };
 }
+
+async function actorForToken(env, sessionToken) {
+  if (!sessionToken) return null;
+  return await firstRow(env, "SELECT * FROM profiles WHERE session_token = ?", [sessionToken]);
+}
+
+async function jobForId(env, jobId) {
+  return await firstRow(env, "SELECT * FROM jobs WHERE id = ?", [jobId]);
+}
+
+function isPoster(job, actor) {
+  return !!actor && (job.customer_profile_id === actor.id || samePhone(job.customer_phone, actor.phone));
+}
+
+function isWorker(job, actor) {
+  return !!actor && (job.provider_id === actor.id || (!!job.provider_phone && samePhone(job.provider_phone, actor.phone)));
+}
+
+async function autoCompleteDueJobs(env) {
+  const dueBefore = Date.now() - AUTO_CONFIRM_MS;
+  const now = Date.now();
+  await runSql(
+    env,
+    `UPDATE jobs SET status = 'completed', payment_state = 'paid', completed_at = ?,
+       auto_completed = 1, updated_at = ?
+     WHERE status = 'worker_done' AND problem_reported = 0
+       AND worker_done_at IS NOT NULL AND worker_done_at <= ?`,
+    [now, now, dueBefore],
+  );
+}
+
+const PROOF_MIMES = ["image/", "video/", "audio/"];
 
 function toProfile(row) {
   // The ID document itself (number and photo) is NOT part of the profile
@@ -543,6 +606,7 @@ const Actions = {
   },
 
   async listJobs(env, args) {
+    await autoCompleteDueJobs(env);
     const status = optStr(args.status, "status", 40, undefined);
     const category = optStr(args.category, "category", 200, undefined);
     let limit = 100;
@@ -583,7 +647,7 @@ const Actions = {
         j.provider_id === viewerId ||
         (j.customer_phone && samePhone(j.customer_phone, viewerPhone)) ||
         (j.provider_phone && samePhone(j.provider_phone, viewerPhone)));
-    return { jobs: rows.map((j) => toJob(j, !isParty(j))) };
+    return { jobs: rows.map((j) => toJob(j, isParty(j))) };
   },
 
   async createJob(env, args) {
@@ -623,8 +687,8 @@ const Actions = {
       `INSERT INTO jobs (title, category, description, location, landmark, budget_amount,
          budget_currency, budget_type, urgency, scheduled_date, scheduled_time, house_directions,
          customer_name, customer_phone, contact_phone, task, customer_profile_id, gps_lat, gps_lng,
-         place_lat, place_lng, pay_method, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+         place_lat, place_lng, pay_method, status, payment_state, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 'waiting', ?, ?)`,
       [
         title.trim(),
         category,
@@ -658,35 +722,227 @@ const Actions = {
   async acceptJob(env, args) {
     const jobId = reqId(args.jobId, "jobId");
     const providerProfileId = reqId(args.providerProfileId, "providerProfileId");
-    const job = await firstRow(env, "SELECT * FROM jobs WHERE id = ?", [jobId]);
+    const providerSessionToken = reqStr(args.providerSessionToken, "providerSessionToken", 10, 300);
+    const actor = await actorForToken(env, providerSessionToken);
+    if (!actor || actor.id !== providerProfileId) {
+      return { ok: false, error: "Sign in again, then accept the job." };
+    }
+    const job = await jobForId(env, jobId);
     if (!job) return { ok: false, error: "That job no longer exists." };
     if (job.status !== "open") return { ok: false, error: "Someone else already took this job." };
-    const prof = await firstRow(env, "SELECT * FROM profiles WHERE id = ?", [providerProfileId]);
-    if (!prof) return { ok: false, error: "Create your profile first, then you can accept jobs." };
-    if (job.customer_profile_id === prof.id) {
+    if (job.customer_profile_id === actor.id || samePhone(job.customer_phone, actor.phone)) {
       return { ok: false, error: "You cannot accept your own job." };
     }
     await runSql(
       env,
-      "UPDATE jobs SET status = 'accepted', provider_name = ?, provider_phone = ?, provider_id = ?, updated_at = ? WHERE id = ?",
-      [prof.full_name, prof.phone, prof.id, Date.now(), jobId],
+      `UPDATE jobs SET status = 'accepted', provider_name = ?, provider_phone = ?, provider_id = ?,
+         payment_state = 'waiting', updated_at = ? WHERE id = ?`,
+      [actor.full_name, actor.phone, actor.id, Date.now(), jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async confirmJobAfterCall(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can confirm it." };
+    if (job.status !== "accepted") return { ok: false, error: "This job is not waiting for your call confirmation." };
+    const now = Date.now();
+    await runSql(env, "UPDATE jobs SET status = 'confirmed', worker_confirmed_at = ?, updated_at = ? WHERE id = ?", [now, now, jobId]);
+    return { ok: true, error: null };
+  },
+
+  async proposeJobPrice(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const amount = optInt(args.amount, "amount", 1, 100000000);
+    if (amount === null) throw bad("Invalid amount.");
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can change the price." };
+    if (job.status !== "accepted") return { ok: false, error: "The price can only be changed right after the call." };
+    const now = Date.now();
+    await runSql(
+      env,
+      `UPDATE jobs SET status = 'price_proposed', worker_confirmed_at = ?, proposed_budget_amount = ?,
+         price_proposed_at = ?, updated_at = ? WHERE id = ?`,
+      [now, amount, now, now, jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async respondToJobPrice(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    if (typeof args.accept !== "boolean") throw bad("Invalid accept.");
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can answer the new price." };
+    if (job.status !== "price_proposed" || job.proposed_budget_amount == null) {
+      return { ok: false, error: "This job is not waiting on a new price." };
+    }
+    const now = Date.now();
+    if (args.accept) {
+      await runSql(
+        env,
+        `UPDATE jobs SET status = 'confirmed', budget_amount = ?, proposed_budget_amount = NULL,
+           price_proposed_at = NULL, updated_at = ? WHERE id = ?`,
+        [job.proposed_budget_amount, now, jobId],
+      );
+    } else {
+      await runSql(
+        env,
+        `UPDATE jobs SET status = 'open', provider_name = NULL, provider_phone = NULL, provider_id = NULL,
+           worker_confirmed_at = NULL, proposed_budget_amount = NULL, price_proposed_at = NULL,
+           payment_state = 'waiting', payment_marked_at = NULL, updated_at = ? WHERE id = ?`,
+        [now, jobId],
+      );
+    }
+    return { ok: true, error: null };
+  },
+
+  async markMobileMoneySent(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can send the Mobile Money." };
+    if (job.status !== "confirmed" || (job.payment_state ?? "waiting") !== "waiting") {
+      return { ok: false, error: "This job is not waiting for Mobile Money." };
+    }
+    const now = Date.now();
+    await runSql(
+      env,
+      "UPDATE jobs SET status = 'held', payment_state = 'held', payment_marked_at = ?, updated_at = ? WHERE id = ?",
+      [now, now, jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async startJob(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can start it." };
+    if (job.status !== "held" || job.payment_state !== "held") {
+      return { ok: false, error: "Jackwork must have the money before work starts." };
+    }
+    let key = null;
+    let mime = null;
+    if (args.dataBase64 !== undefined || args.mimeType !== undefined) {
+      const dataBase64 = reqStr(args.dataBase64, "dataBase64", 10, 30000000);
+      mime = reqStr(args.mimeType, "mimeType", 3, 80);
+      if (!PROOF_MIMES.some((p) => mime.startsWith(p))) {
+        return { ok: false, error: "Proof must be a picture, a video, or a recording." };
+      }
+      key = `job-proofs/job-${jobId}-before`;
+      const bytes = base64ToBytes(dataBase64);
+      await runSql(env, "INSERT OR REPLACE INTO blobs (key, mime, data, created_at) VALUES (?, ?, ?, ?)", [key, mime, bytes, Date.now()]);
+    }
+    await runSql(
+      env,
+      "UPDATE jobs SET status = 'in_progress', before_proof_blob_key = ?, before_proof_mime = ?, updated_at = ? WHERE id = ?",
+      [key, mime, Date.now(), jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async finishJob(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can mark it done." };
+    if (job.status !== "in_progress") return { ok: false, error: "This job is not being worked on." };
+    let key = null;
+    let mime = null;
+    if (args.dataBase64 !== undefined || args.mimeType !== undefined) {
+      const dataBase64 = reqStr(args.dataBase64, "dataBase64", 10, 30000000);
+      mime = reqStr(args.mimeType, "mimeType", 3, 80);
+      if (!PROOF_MIMES.some((p) => mime.startsWith(p))) {
+        return { ok: false, error: "Proof must be a picture, a video, or a recording." };
+      }
+      key = `job-proofs/job-${jobId}-after`;
+      const bytes = base64ToBytes(dataBase64);
+      await runSql(env, "INSERT OR REPLACE INTO blobs (key, mime, data, created_at) VALUES (?, ?, ?, ?)", [key, mime, bytes, Date.now()]);
+    }
+    const now = Date.now();
+    await runSql(
+      env,
+      `UPDATE jobs SET status = 'worker_done', worker_done_at = ?, after_proof_blob_key = ?,
+         after_proof_mime = ?, updated_at = ? WHERE id = ?`,
+      [now, key, mime, now, jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async confirmJobDone(env, args) {
+    await autoCompleteDueJobs(env);
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can confirm it is done." };
+    if (job.status !== "worker_done") return { ok: false, error: "The worker has not marked this job done yet." };
+    const now = Date.now();
+    await runSql(
+      env,
+      `UPDATE jobs SET status = 'completed', payment_state = 'paid', poster_confirmed_at = ?,
+         completed_at = ?, auto_completed = 0, updated_at = ? WHERE id = ?`,
+      [now, now, now, jobId],
+    );
+    return { ok: true, error: null };
+  },
+
+  async reportJobProblem(env, args) {
+    const jobId = reqId(args.jobId, "jobId");
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    const job = await jobForId(env, jobId);
+    if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+    const poster = isPoster(job, actor);
+    const worker = isWorker(job, actor);
+    if (!poster && !worker) return { ok: false, error: "Only the people on this job can report a problem." };
+    if (!["price_proposed", "confirmed", "held", "in_progress", "worker_done"].includes(job.status)) {
+      return { ok: false, error: "A problem can be reported once the job is confirmed." };
+    }
+    const now = Date.now();
+    await runSql(
+      env,
+      "UPDATE jobs SET problem_reported = 1, problem_by = ?, problem_at = ?, updated_at = ? WHERE id = ?",
+      [poster ? "poster" : "worker", now, now, jobId],
     );
     return { ok: true, error: null };
   },
 
   async updateJobStatus(env, args) {
     const jobId = reqId(args.jobId, "jobId");
-    if (!["open", "in_progress", "completed", "cancelled"].includes(args.status)) {
+    if (!["open", "cancelled"].includes(args.status)) {
       throw bad("Invalid status.");
     }
+    const job = await jobForId(env, jobId);
+    if (!job) return { ok: true };
     if (args.status === "open") {
+      if (!["accepted", "confirmed"].includes(job.status)) return { ok: true };
       await runSql(
         env,
-        "UPDATE jobs SET status = 'open', provider_name = NULL, provider_phone = NULL, provider_id = NULL, updated_at = ? WHERE id = ?",
+        `UPDATE jobs SET status = 'open', provider_name = NULL, provider_phone = NULL, provider_id = NULL,
+           worker_confirmed_at = NULL, payment_state = 'waiting', payment_marked_at = NULL, updated_at = ? WHERE id = ?`,
         [Date.now(), jobId],
       );
     } else {
-      await runSql(env, "UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", [args.status, Date.now(), jobId]);
+      if (!["open", "accepted", "confirmed", "held"].includes(job.status)) return { ok: true };
+      await runSql(env, "UPDATE jobs SET status = 'cancelled', updated_at = ? WHERE id = ?", [Date.now(), jobId]);
     }
     return { ok: true };
   },

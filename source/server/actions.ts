@@ -29,6 +29,22 @@ const jobShape = z.object({
   providerName: z.string().nullable(),
   providerPhone: z.string().nullable(),
   providerId: z.number().nullable(),
+  workerConfirmedAt: z.string().nullable(),
+  proposedBudgetAmount: z.number().nullable(),
+  priceProposedAt: z.string().nullable(),
+  paymentState: z.string(),
+  paymentMarkedAt: z.string().nullable(),
+  beforeProofUrl: z.string().nullable(),
+  beforeProofMime: z.string().nullable(),
+  afterProofUrl: z.string().nullable(),
+  afterProofMime: z.string().nullable(),
+  workerDoneAt: z.string().nullable(),
+  posterConfirmedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  autoCompleted: z.boolean(),
+  problemReported: z.boolean(),
+  problemBy: z.string().nullable(),
+  problemAt: z.string().nullable(),
   rating: z.number().nullable(),
   review: z.string().nullable(),
   payMethod: z.string(),
@@ -98,14 +114,43 @@ const workerShape = z.object({
 type JobRow = typeof schema.jobs.$inferSelect;
 type ProfileRow = typeof schema.profiles.$inferSelect;
 
-function toJob(row: JobRow, stripPrivate = false): z.infer<typeof jobShape> {
+/** Placeholder safety valve: if the poster does not confirm or report
+    a problem within this window after the worker marks the job done,
+    the job completes automatically and the simulated payout shows. */
+const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
+
+function publicPlace(row: JobRow): string {
+  if (row.landmark?.trim()) return row.landmark.trim();
+  return row.location.split(",")[0]?.trim() || row.location;
+}
+
+async function blobUrlOrNull(
+  ctx: { blobs: { getUrl: (k: string) => Promise<string> } },
+  key: string | null,
+): Promise<string | null> {
+  if (!key) return null;
+  try {
+    return await ctx.blobs.getUrl(key);
+  } catch {
+    return null;
+  }
+}
+
+async function toJob(
+  ctx: { blobs: { getUrl: (k: string) => Promise<string> } },
+  row: JobRow,
+  stripPrivate = false,
+): Promise<z.infer<typeof jobShape>> {
+  const publicBoard = stripPrivate && row.status === "open";
+  const beforeProofUrl = stripPrivate ? null : await blobUrlOrNull(ctx, row.beforeProofBlobKey ?? null);
+  const afterProofUrl = stripPrivate ? null : await blobUrlOrNull(ctx, row.afterProofBlobKey ?? null);
   return {
     id: row.id,
     title: row.title,
-    category: row.category,
-    description: row.description,
-    location: row.location,
-    landmark: row.landmark ?? null,
+    category: publicBoard ? "" : row.category,
+    description: publicBoard ? "" : row.description,
+    location: publicBoard ? publicPlace(row) : row.location,
+    landmark: publicBoard ? null : (row.landmark ?? null),
     budgetAmount: row.budgetAmount ?? null,
     budgetCurrency: row.budgetCurrency,
     budgetType: row.budgetType,
@@ -119,26 +164,42 @@ function toJob(row: JobRow, stripPrivate = false): z.infer<typeof jobShape> {
     // public settlement dataset, the same for everyone there,
     // and the board's distance feature runs on them.
     houseDirections: stripPrivate ? null : (row.houseDirections ?? null),
-    customerName: row.customerName,
+    customerName: publicBoard ? "" : row.customerName,
     customerPhone: stripPrivate ? "" : row.customerPhone,
     contactPhone: stripPrivate ? null : (row.contactPhone ?? null),
-    task: row.task ?? null,
-    customerProfileId: row.customerProfileId ?? null,
+    task: publicBoard ? null : (row.task ?? null),
+    customerProfileId: publicBoard ? null : (row.customerProfileId ?? null),
     gpsLat: stripPrivate ? null : (row.gpsLat ?? null),
     gpsLng: stripPrivate ? null : (row.gpsLng ?? null),
     placeLat: row.placeLat ?? null,
     placeLng: row.placeLng ?? null,
     status: row.status,
-    providerName: row.providerName ?? null,
+    providerName: publicBoard ? null : (row.providerName ?? null),
     providerPhone: stripPrivate ? null : (row.providerPhone ?? null),
-    providerId: row.providerId ?? null,
-    rating: row.rating ?? null,
-    review: row.review ?? null,
+    providerId: publicBoard ? null : (row.providerId ?? null),
+    workerConfirmedAt: publicBoard ? null : (row.workerConfirmedAt?.toISOString() ?? null),
+    proposedBudgetAmount: publicBoard ? null : (row.proposedBudgetAmount ?? null),
+    priceProposedAt: publicBoard ? null : (row.priceProposedAt?.toISOString() ?? null),
+    paymentState: row.paymentState ?? "waiting",
+    paymentMarkedAt: publicBoard ? null : (row.paymentMarkedAt?.toISOString() ?? null),
+    beforeProofUrl,
+    beforeProofMime: stripPrivate ? null : (row.beforeProofMime ?? null),
+    afterProofUrl,
+    afterProofMime: stripPrivate ? null : (row.afterProofMime ?? null),
+    workerDoneAt: publicBoard ? null : (row.workerDoneAt?.toISOString() ?? null),
+    posterConfirmedAt: publicBoard ? null : (row.posterConfirmedAt?.toISOString() ?? null),
+    completedAt: publicBoard ? null : (row.completedAt?.toISOString() ?? null),
+    autoCompleted: publicBoard ? false : row.autoCompleted === 1,
+    problemReported: publicBoard ? false : row.problemReported === 1,
+    problemBy: publicBoard ? null : (row.problemBy ?? null),
+    problemAt: publicBoard ? null : (row.problemAt?.toISOString() ?? null),
+    rating: publicBoard ? null : (row.rating ?? null),
+    review: publicBoard ? null : (row.review ?? null),
     payMethod: row.payMethod === "Mobile Money" ? "Mobile Money" : "Mobile Money",
-    ratingByProvider: row.ratingByProvider ?? null,
-    reviewByProvider: row.reviewByProvider ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    ratingByProvider: publicBoard ? null : (row.ratingByProvider ?? null),
+    reviewByProvider: publicBoard ? null : (row.reviewByProvider ?? null),
+    createdAt: publicBoard ? new Date(0).toISOString() : row.createdAt.toISOString(),
+    updatedAt: publicBoard ? new Date(0).toISOString() : row.updatedAt.toISOString(),
   };
 }
 
@@ -198,6 +259,59 @@ async function toProfile(
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
 }
+
+function samePhone(a: string, b: string): boolean {
+  const da = digitsOnly(a);
+  const db = digitsOnly(b);
+  if (!da || !db) return false;
+  return da === db || da.endsWith(db.slice(-7)) || db.endsWith(da.slice(-7));
+}
+
+async function actorForToken(ctx: any, sessionToken: string): Promise<ProfileRow | null> {
+  const db = (ctx.db as any)();
+  const rows = await db
+    .select()
+    .from(schema.profiles)
+    .where(eq(schema.profiles.sessionToken, sessionToken))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function jobForId(ctx: any, jobId: number): Promise<JobRow | null> {
+  const db = (ctx.db as any)();
+  const rows = await db.select().from(schema.jobs).where(eq(schema.jobs.id, jobId)).limit(1);
+  return rows[0] ?? null;
+}
+
+function isPoster(job: JobRow, actor: ProfileRow): boolean {
+  return job.customerProfileId === actor.id || samePhone(job.customerPhone, actor.phone);
+}
+
+function isWorker(job: JobRow, actor: ProfileRow): boolean {
+  return job.providerId === actor.id || (!!job.providerPhone && samePhone(job.providerPhone, actor.phone));
+}
+
+/** Completes worker_done jobs whose poster stayed silent past the
+    AUTO_CONFIRM_MS window, unless a problem was reported. */
+async function autoCompleteDueJobs(ctx: any): Promise<void> {
+  const db = (ctx.db as any)();
+  const dueBefore = new Date(Date.now() - AUTO_CONFIRM_MS);
+  const rows = await db
+    .select()
+    .from(schema.jobs)
+    .where(and(eq(schema.jobs.status, "worker_done"), eq(schema.jobs.problemReported, 0)));
+  const now = new Date();
+  for (const job of rows) {
+    if (job.workerDoneAt && job.workerDoneAt <= dueBefore) {
+      await db
+        .update(schema.jobs)
+        .set({ status: "completed", paymentState: "paid", completedAt: now, autoCompleted: 1, updatedAt: now })
+        .where(eq(schema.jobs.id, job.id));
+    }
+  }
+}
+
+const PROOF_MIMES = ["image/", "video/", "audio/"];
 
 export const Actions = {
   getOverview: defineAction({
@@ -707,8 +821,9 @@ export const Actions = {
     response: z.object({ jobs: z.array(jobShape) }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
+      await autoCompleteDueJobs(ctx);
       const conds = [];
-      if (args.status) conds.push(eq(schema.jobs.status, args.status as "open" | "accepted" | "in_progress" | "completed" | "cancelled"));
+      if (args.status) conds.push(eq(schema.jobs.status, args.status as "open" | "accepted" | "confirmed" | "held" | "in_progress" | "worker_done" | "completed" | "cancelled"));
       if (args.category) conds.push(eq(schema.jobs.category, args.category));
       const rows = await db
         .select()
@@ -740,7 +855,7 @@ export const Actions = {
           j.providerId === viewerId ||
           phoneMatch(j.customerPhone) ||
           phoneMatch(j.providerPhone));
-      return { jobs: rows.map((j) => toJob(j, !isParty(j))) };
+      return { jobs: await Promise.all(rows.map((j) => toJob(ctx, j, !isParty(j)))) };
     },
   }),
 
@@ -800,6 +915,7 @@ export const Actions = {
           placeLng: args.placeLng ?? null,
           payMethod: args.payMethod,
           status: "open",
+          paymentState: "waiting",
           createdAt: now,
           updatedAt: now,
         })
@@ -812,35 +928,33 @@ export const Actions = {
   }),
 
   acceptJob: defineAction({
-    description: "A signed-in profile accepts an open job as the service provider. Uses the same unified profile the person posts jobs with.",
+    description: "A signed-in profile accepts an open job as the service provider. The provider is proven by their session token. Uses the same unified profile the person posts jobs with.",
     request: z.object({
       jobId: z.number().int().positive(),
       providerProfileId: z.number().int().positive(),
+      providerSessionToken: z.string().min(10).max(300),
     }),
     response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
-      const jobRows = await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1);
-      const job = jobRows[0];
+      const actor = await actorForToken(ctx, args.providerSessionToken);
+      if (!actor || actor.id !== args.providerProfileId) {
+        return { ok: false, error: "Sign in again, then accept the job." };
+      }
+      const job = await jobForId(ctx, args.jobId);
       if (!job) return { ok: false, error: "That job no longer exists." };
       if (job.status !== "open") return { ok: false, error: "Someone else already took this job." };
-      const profRows = await db
-        .select()
-        .from(schema.profiles)
-        .where(eq(schema.profiles.id, args.providerProfileId))
-        .limit(1);
-      const prof = profRows[0];
-      if (!prof) return { ok: false, error: "Create your profile first, then you can accept jobs." };
-      if (job.customerProfileId === prof.id) {
+      if (job.customerProfileId === actor.id || samePhone(job.customerPhone, actor.phone)) {
         return { ok: false, error: "You cannot accept your own job." };
       }
       await db
         .update(schema.jobs)
         .set({
           status: "accepted",
-          providerName: prof.fullName,
-          providerPhone: prof.phone,
-          providerId: prof.id,
+          providerName: actor.fullName,
+          providerPhone: actor.phone,
+          providerId: actor.id,
+          paymentState: "waiting",
           updatedAt: new Date(),
         })
         .where(eq(schema.jobs.id, args.jobId));
@@ -849,22 +963,292 @@ export const Actions = {
     },
   }),
 
-  updateJobStatus: defineAction({
-    description: "Moves a job to a new status: in_progress, completed, cancelled, or back to open (releases the worker).",
+  confirmJobAfterCall: defineAction({
+    description: "The worker confirms, after the understanding call with the poster, that they understand the job and can do it. Moves an accepted job to confirmed.",
     request: z.object({
       jobId: z.number().int().positive(),
-      status: z.enum(["open", "in_progress", "completed", "cancelled"]),
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can confirm it." };
+      if (job.status !== "accepted") return { ok: false, error: "This job is not waiting for your call confirmation." };
+      await db
+        .update(schema.jobs)
+        .set({ status: "confirmed", workerConfirmedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  proposeJobPrice: defineAction({
+    description: "After the confirmation call, the worker proposes a new price in the job's own currency, or confirms at the original price instead. One proposal round only. The job waits on the poster in price_proposed.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      amount: z.number().int().positive().max(100000000),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can change the price." };
+      if (job.status !== "accepted") return { ok: false, error: "The price can only be changed right after the call." };
+      const now = new Date();
+      await db
+        .update(schema.jobs)
+        .set({
+          status: "price_proposed",
+          workerConfirmedAt: now,
+          proposedBudgetAmount: args.amount,
+          priceProposedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  respondToJobPrice: defineAction({
+    description: "The poster answers the worker's proposed price. Accept updates the job price everywhere and continues to the Mobile Money step. No releases the worker and returns the job to open at the original posted price, with the worker link cleared.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      accept: z.boolean(),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can answer the new price." };
+      if (job.status !== "price_proposed" || job.proposedBudgetAmount == null) {
+        return { ok: false, error: "This job is not waiting on a new price." };
+      }
+      const now = new Date();
+      if (args.accept) {
+        await db
+          .update(schema.jobs)
+          .set({
+            status: "confirmed",
+            budgetAmount: job.proposedBudgetAmount,
+            proposedBudgetAmount: null,
+            priceProposedAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.jobs.id, args.jobId));
+      } else {
+        await db
+          .update(schema.jobs)
+          .set({
+            status: "open",
+            providerName: null,
+            providerPhone: null,
+            providerId: null,
+            workerConfirmedAt: null,
+            proposedBudgetAmount: null,
+            priceProposedAt: null,
+            paymentState: "waiting",
+            paymentMarkedAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.jobs.id, args.jobId));
+      }
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  markMobileMoneySent: defineAction({
+    description: "Simulated Mobile Money step: the poster marks that they sent the job amount to Jackwork. The job moves to held and both sides see that Jackwork has the money. No real money moves.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can send the Mobile Money." };
+      if (job.status !== "confirmed" || job.paymentState !== "waiting") {
+        return { ok: false, error: "This job is not waiting for Mobile Money." };
+      }
+      const now = new Date();
+      await db
+        .update(schema.jobs)
+        .set({ status: "held", paymentState: "held", paymentMarkedAt: now, updatedAt: now })
+        .where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  startJob: defineAction({
+    description: "The worker starts a held job, with optional before proof: a picture, a video, or an audio recording stored as a blob. Moves the job to in_progress (Working).",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      dataBase64: z.string().min(10).max(30000000).optional(),
+      mimeType: z.string().min(3).max(80).optional(),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can start it." };
+      if (job.status !== "held" || job.paymentState !== "held") {
+        return { ok: false, error: "Jackwork must have the money before work starts." };
+      }
+      const patch: Partial<JobRow> = { status: "in_progress", updatedAt: new Date() };
+      if (args.dataBase64 || args.mimeType) {
+        if (!args.dataBase64 || !args.mimeType || !PROOF_MIMES.some((p) => args.mimeType!.startsWith(p))) {
+          return { ok: false, error: "Proof must be a picture, a video, or a recording." };
+        }
+        const key = `job-proofs/job-${args.jobId}-before`;
+        const bytes = Buffer.from(args.dataBase64, "base64");
+        await ctx.blobs.put(key, bytes, { contentType: args.mimeType });
+        patch.beforeProofBlobKey = key;
+        patch.beforeProofMime = args.mimeType;
+      }
+      await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  finishJob: defineAction({
+    description: "The worker marks a working job done, with optional after proof: a picture, a video, or an audio recording stored as a blob. Moves the job to worker_done, waiting for the poster.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+      dataBase64: z.string().min(10).max(30000000).optional(),
+      mimeType: z.string().min(3).max(80).optional(),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isWorker(job, actor)) return { ok: false, error: "Only the worker on this job can mark it done." };
+      if (job.status !== "in_progress") return { ok: false, error: "This job is not being worked on." };
+      const now = new Date();
+      const patch: Partial<JobRow> = { status: "worker_done", workerDoneAt: now, updatedAt: now };
+      if (args.dataBase64 || args.mimeType) {
+        if (!args.dataBase64 || !args.mimeType || !PROOF_MIMES.some((p) => args.mimeType!.startsWith(p))) {
+          return { ok: false, error: "Proof must be a picture, a video, or a recording." };
+        }
+        const key = `job-proofs/job-${args.jobId}-after`;
+        const bytes = Buffer.from(args.dataBase64, "base64");
+        await ctx.blobs.put(key, bytes, { contentType: args.mimeType });
+        patch.afterProofBlobKey = key;
+        patch.afterProofMime = args.mimeType;
+      }
+      await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  confirmJobDone: defineAction({
+    description: "The poster confirms the worker is done. Only worker done plus this poster confirmation completes the job; the simulated payout then shows as paid.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      await autoCompleteDueJobs(ctx);
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      if (!isPoster(job, actor)) return { ok: false, error: "Only the person who posted this job can confirm it is done." };
+      if (job.status !== "worker_done") return { ok: false, error: "The worker has not marked this job done yet." };
+      const now = new Date();
+      await db
+        .update(schema.jobs)
+        .set({ status: "completed", paymentState: "paid", posterConfirmedAt: now, completedAt: now, autoCompleted: 0, updatedAt: now })
+        .where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  reportJobProblem: defineAction({
+    description: "Either side reports a problem, from confirmed onward. The job is flagged for admin and the automatic completion safety valve is frozen.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      const job = await jobForId(ctx, args.jobId);
+      if (!actor || !job) return { ok: false, error: "That job no longer exists." };
+      const poster = isPoster(job, actor);
+      const worker = isWorker(job, actor);
+      if (!poster && !worker) return { ok: false, error: "Only the people on this job can report a problem." };
+      if (!["price_proposed", "confirmed", "held", "in_progress", "worker_done"].includes(job.status)) {
+        return { ok: false, error: "A problem can be reported once the job is confirmed." };
+      }
+      const now = new Date();
+      await db
+        .update(schema.jobs)
+        .set({ problemReported: 1, problemBy: poster ? "poster" : "worker", problemAt: now, updatedAt: now })
+        .where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
+
+  updateJobStatus: defineAction({
+    description: "Limited moves only: back to open releases the worker before work starts, and cancelled cancels a job that has not started. Working, done, and completed move only through the lifecycle actions.",
+    request: z.object({
+      jobId: z.number().int().positive(),
+      status: z.enum(["open", "cancelled"]),
     }),
     response: z.object({ ok: z.boolean() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
-      const patch: Partial<JobRow> = { status: args.status, updatedAt: new Date() };
+      const job = await jobForId(ctx, args.jobId);
+      if (!job) return { ok: true };
       if (args.status === "open") {
-        patch.providerName = null;
-        patch.providerPhone = null;
-        patch.providerId = null;
+        if (!["accepted", "confirmed"].includes(job.status)) return { ok: true };
+        await db
+          .update(schema.jobs)
+          .set({
+            status: "open",
+            providerName: null,
+            providerPhone: null,
+            providerId: null,
+            workerConfirmedAt: null,
+            paymentState: "waiting",
+            paymentMarkedAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.jobs.id, args.jobId));
+      } else {
+        if (!["open", "accepted", "confirmed", "held"].includes(job.status)) return { ok: true };
+        await db
+          .update(schema.jobs)
+          .set({ status: "cancelled", updatedAt: new Date() })
+          .where(eq(schema.jobs.id, args.jobId));
       }
-      await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, args.jobId));
       ctx.invalidateQueries();
       return { ok: true };
     },
