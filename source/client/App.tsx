@@ -2546,12 +2546,56 @@ function areaLabel(poster: PlaceFields | null, me: PlaceFields): string | null {
   return null;
 }
 
+/* The kinds-of-work chip grid: ONE picker, used by the Find work
+   Categories screen and by the first-visit "What job can you do?"
+   ask. Same groups, same chips, same red picked style in both. */
+function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: string) => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {SERVICE_GROUPS.map((g) => (
+        <div key={g.name}>
+          <p className="mb-2 text-center text-base font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{g.name}</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {g.services.map((sv) => {
+              const on = sel.includes(sv.name);
+              return (
+                <button
+                  key={sv.name}
+                  type="button"
+                  onClick={() => onToggle(sv.name)}
+                  aria-pressed={on}
+                  aria-label={`${on ? "Remove" : "Add"} ${sv.name} to the work I want`}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-base font-bold"
+                  style={{
+                    borderRadius: 12,
+                    background: on ? "var(--select)" : "var(--glass)",
+                    color: on ? "var(--select-ink)" : "var(--text)",
+                    border: "1.5px solid var(--glass-border)",
+                    ...selectStyle(on),
+                  }}
+                >
+                  <ServiceIcon icon={sv.icon} size={18} color={on ? "var(--select-ink)" : "var(--text)"} />
+                  {sv.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ================================================================
-   FIND WORK — one big board. Every open job is here right away.
-   The Categories button on the board opens the kinds of work the
-   person wants; that work shows first, then jobs in their area,
-   then the newest. Nothing is hidden. Category picking lives
-   here in Find work, not in the profile.
+   FIND WORK — one big board. Every open job is here right away,
+   once the person has said what work they can do. A person who
+   has never answered (no saved kinds and never skipped) is asked
+   "What job can you do?" first; after that, Find work opens
+   straight on the board forever. The Categories button on the
+   board opens the kinds of work the person wants; that work
+   shows first, then jobs in their area, then the newest. Nothing
+   is hidden. Category picking lives here in Find work, not in
+   the profile.
    ================================================================ */
 function BoardFlow({
   profile,
@@ -2573,6 +2617,15 @@ function BoardFlow({
   const [showCats, setShowCats] = useState(false);
   const [prefsSel, setPrefsSel] = useState<string[] | null>(null);
   const prefs = profile.workPreferences;
+  // First-visit ask: a person who has never answered (no saved
+  // kinds, never skipped) is asked what work they can do before
+  // the board. Answering either way is saved on the profile, so
+  // the ask never comes back; askDone covers the moment between
+  // the tap and the profile refreshing.
+  const [askSel, setAskSel] = useState<string[]>([]);
+  const [askBusy, setAskBusy] = useState(false);
+  const [askDone, setAskDone] = useState(false);
+  const needsAsk = !askDone && !profile.workPrefsAnswered && prefs.length === 0;
 
   const list = useMemo(() => {
     let l = openJobs;
@@ -2603,6 +2656,44 @@ function BoardFlow({
     return [...l].sort((a, b) => score(a) - score(b) || b.id - a.id);
   }, [openJobs, profile, jobQuery, prefs, placeByProfileId]);
 
+  if (needsAsk) {
+    const toggleAsk = (name: string) =>
+      setAskSel(askSel.includes(name) ? askSel.filter((x) => x !== name) : [...askSel, name]);
+    const answerAsk = async (preferences: string[]) => {
+      setAskBusy(true);
+      try {
+        // Saving the picks and skipping both go through the same
+        // save: the server marks the ask answered either way, and
+        // an empty save is the skip, "Show me all jobs".
+        await api.updateWorkPreferences({ profileId: profile.id, preferences });
+        await queryClient.invalidateQueries();
+      } finally {
+        setAskBusy(false);
+        setAskDone(true);
+      }
+    };
+    return (
+      <Screen title="What job can you do?" onBack={onExit} layout="top">
+        <WorkKindsGrid sel={askSel} onToggle={toggleAsk} />
+        <div className="mt-6 pb-2 pt-3">
+          <button
+            type="button"
+            disabled={askBusy}
+            onClick={() => answerAsk(askSel)}
+            className="mx-auto w-full max-w-[300px] py-4 text-xl font-black disabled:opacity-50"
+            style={primaryBtnStyle}
+            aria-label="Save and see jobs"
+          >
+            Save and see jobs
+          </button>
+          <button type="button" disabled={askBusy} onClick={() => answerAsk([])} className="mt-1 w-full py-2 text-center text-base font-bold text-[var(--dim)]" aria-label="Show me all jobs">
+            Show me all jobs
+          </button>
+        </div>
+      </Screen>
+    );
+  }
+
   if (showCats) {
     const sel = prefsSel ?? prefs;
     const toggle = (name: string) =>
@@ -2610,38 +2701,7 @@ function BoardFlow({
     return (
       <Screen title="Categories" onBack={() => setShowCats(false)} layout="top">
         <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Tap the work you want. It shows first on the board. All jobs still show.</p>
-        <div className="flex flex-col gap-4">
-          {SERVICE_GROUPS.map((g) => (
-            <div key={g.name}>
-              <p className="mb-2 text-center text-base font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{g.name}</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {g.services.map((sv) => {
-                  const on = sel.includes(sv.name);
-                  return (
-                    <button
-                      key={sv.name}
-                      type="button"
-                      onClick={() => toggle(sv.name)}
-                      aria-pressed={on}
-                      aria-label={`${on ? "Remove" : "Add"} ${sv.name} to the work I want`}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 text-base font-bold"
-                      style={{
-                        borderRadius: 12,
-                        background: on ? "var(--select)" : "var(--glass)",
-                        color: on ? "var(--select-ink)" : "var(--text)",
-                        border: "1.5px solid var(--glass-border)",
-                        ...selectStyle(on),
-                      }}
-                    >
-                      <ServiceIcon icon={sv.icon} size={18} color={on ? "var(--select-ink)" : "var(--text)"} />
-                      {sv.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+        <WorkKindsGrid sel={sel} onToggle={toggle} />
         {/* Normal flow at the end of the list — NOT pinned to the
             bottom of the screen. A pinned solid band here was the
             stray bar/field sitting at the bottom of the app. */}

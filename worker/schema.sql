@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   house_directions TEXT,
   mobile_money_number TEXT,
   work_preferences TEXT,
+  work_prefs_answered INTEGER NOT NULL DEFAULT 0,
   verification_status TEXT NOT NULL DEFAULT 'unverified',
   offers_services INTEGER NOT NULL DEFAULT 0,
   gps_lat REAL,
@@ -126,6 +127,10 @@ ALTER TABLE jobs ADD COLUMN auto_completed INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jobs ADD COLUMN problem_reported INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jobs ADD COLUMN problem_by TEXT;
 ALTER TABLE jobs ADD COLUMN problem_at INTEGER;
+
+-- Find work first-visit ask flag, for databases created before it
+-- existed. The deploy runner skips it when the column is already there.
+ALTER TABLE profiles ADD COLUMN work_prefs_answered INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_profiles_session_token ON profiles (session_token);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);

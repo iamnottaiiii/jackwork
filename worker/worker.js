@@ -230,6 +230,7 @@ function toProfile(row) {
     houseDirections: row.house_directions ?? null,
     mobileMoneyNumber: row.mobile_money_number ?? null,
     workPreferences,
+    workPrefsAnswered: row.work_prefs_answered === 1,
     verificationStatus: row.verification_status,
     offersServices: row.offers_services === 1,
     gpsLat: row.gps_lat ?? null,
@@ -1034,7 +1035,7 @@ const Actions = {
     for (const p of args.preferences) {
       if (typeof p !== "string" || p.length > 60) throw bad("Invalid preferences.");
     }
-    await runSql(env, "UPDATE profiles SET work_preferences = ?, updated_at = ? WHERE id = ?", [
+    await runSql(env, "UPDATE profiles SET work_preferences = ?, work_prefs_answered = 1, updated_at = ? WHERE id = ?", [
       JSON.stringify(args.preferences),
       Date.now(),
       profileId,

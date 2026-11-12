@@ -139,6 +139,8 @@ export const profiles = sqliteTable("profiles", {
   mobileMoneyNumber: text("mobile_money_number"),
   /** JSON array of service names the person wants work in. Preferred work shows first on the board; the board still shows every open job. */
   workPreferences: text("work_preferences"),
+  /** 1 once the person has answered the Find work first-visit ask, either by saving kinds of work or by choosing to see all jobs. While 0 with empty preferences, Find work asks "What job can you do?" first instead of dropping the person straight on the board. Saving preferences through the board Categories screen also sets it. */
+  workPrefsAnswered: integer("work_prefs_answered").notNull().default(0),
   verificationStatus: text("verification_status", { enum: VERIFICATION_STATUSES })
     .notNull()
     .default("unverified"),

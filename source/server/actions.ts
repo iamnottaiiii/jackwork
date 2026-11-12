@@ -71,6 +71,7 @@ const profileShape = z.object({
   houseDirections: z.string().nullable(),
   mobileMoneyNumber: z.string().nullable(),
   workPreferences: z.array(z.string()),
+  workPrefsAnswered: z.boolean(),
   verificationStatus: z.string(),
   offersServices: z.boolean(),
   gpsLat: z.number().nullable(),
@@ -250,6 +251,7 @@ async function toProfile(
         return [];
       }
     })(),
+    workPrefsAnswered: row.workPrefsAnswered === 1,
     verificationStatus: row.verificationStatus,
     offersServices: row.offersServices === 1,
     gpsLat: row.gpsLat ?? null,
@@ -1391,7 +1393,7 @@ export const Actions = {
       const db = ctx.db<typeof schema>();
       await db
         .update(schema.profiles)
-        .set({ workPreferences: JSON.stringify(args.preferences), updatedAt: new Date() })
+        .set({ workPreferences: JSON.stringify(args.preferences), workPrefsAnswered: 1, updatedAt: new Date() })
         .where(eq(schema.profiles.id, args.profileId));
       ctx.invalidateQueries();
       return { ok: true };
