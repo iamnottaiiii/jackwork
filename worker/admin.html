@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jackwork Admin</title>
+<style>
+  :root {
+    --bg: #000; --text: #fff; --dim: rgba(255,255,255,.62);
+    --glass: rgba(255,255,255,.07); --border: rgba(255,255,255,.14);
+    --btn: #fff; --btn-ink: #000; --accent-rgb: 142,47,42; --danger: #ff8a80;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fff; --text: #000; --dim: rgba(0,0,0,.6);
+      --glass: rgba(0,0,0,.045); --border: rgba(0,0,0,.13);
+      --btn: #000; --btn-ink: #fff; --accent-rgb: 180,69,60; --danger: #b3261e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(560px 380px at 12% 8%, rgba(var(--accent-rgb), .42), transparent 70%),
+      radial-gradient(620px 420px at 88% 92%, rgba(var(--accent-rgb), .34), transparent 70%),
+      radial-gradient(480px 340px at 52% 46%, rgba(var(--accent-rgb), .2), transparent 70%);
+  }
+  main { position: relative; max-width: 760px; margin: 0 auto; padding: 28px 18px 48px; }
+  h1 { font-size: 28px; font-weight: 900; margin: 0 0 4px; }
+  h2 { font-size: 21px; font-weight: 900; margin: 26px 0 10px; }
+  p.sub { color: var(--dim); font-size: 16px; font-weight: 600; margin: 0 0 18px; }
+  .glass {
+    background: var(--glass); border: 1px solid var(--border); border-radius: 12px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  .panel { padding: 20px; }
+  label { display: block; font-size: 16px; font-weight: 700; margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; padding: 13px 14px; font-size: 19px; font-weight: 600;
+    color: var(--text); background: var(--glass); border: 1px solid var(--border);
+    border-radius: 12px; outline: none;
+  }
+  button.primary {
+    width: 100%; margin-top: 18px; padding: 15px; font-size: 19px; font-weight: 900;
+    color: var(--btn-ink); background: var(--btn); border: none; border-radius: 12px; cursor: pointer;
+  }
+  button.primary:disabled { opacity: .4; }
+  .msg { margin-top: 14px; font-size: 16px; font-weight: 700; }
+  .msg.err { color: var(--danger); }
+  .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .count { padding: 16px; text-align: center; }
+  .count b { display: block; font-size: 30px; font-weight: 900; }
+  .count span { font-size: 14px; font-weight: 700; color: var(--dim); }
+  .row { padding: 14px 16px; margin-bottom: 10px; }
+  .row .t { font-size: 18px; font-weight: 800; }
+  .row .d { font-size: 15px; font-weight: 600; color: var(--dim); margin-top: 3px; line-height: 1.45; }
+  .row .d .flag { color: var(--danger); font-weight: 800; }
+  .hidden { display: none; }
+  button.link { background: none; border: none; color: var(--dim); font-size: 16px; font-weight: 700; cursor: pointer; padding: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Jackwork Admin</h1>
+  <p class="sub">Owner only. View only.</p>
+
+  <section id="signin" class="glass panel">
+    <div id="step1">
+      <label for="name">Your name</label>
+      <input id="name" autocomplete="name">
+      <label for="phone">Your phone number</label>
+      <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+1 ...">
+      <button class="primary" id="getCode">Get code</button>
+    </div>
+    <div id="step2" class="hidden">
+      <label for="code">Code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code">
+      <p class="msg" id="codeShown"></p>
+      <button class="primary" id="verify">Sign in</button>
+    </div>
+    <p class="msg err" id="signMsg"></p>
+  </section>
+
+  <section id="data" class="hidden">
+    <div class="counts" id="counts"></div>
+    <h2>Jobs, newest first</h2>
+    <div id="jobs"></div>
+    <h2>Profiles</h2>
+    <div id="profiles"></div>
+    <button class="link" id="refresh">Refresh</button>
+  </section>
+</main>
+<script>
+  // The owner's number is not written anywhere in this page. The
+  // server checks the signed-in profile against it and refuses
+  // everyone else with no data.
+  var token = null;
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  async function call(action, args) {
+    var res = await fetch("/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: action, args: args }),
+    });
+    var body = await res.json();
+    if (body.error) throw new Error(body.error);
+    return body.data;
+  }
+  function money(j) {
+    if (j.amount == null) return "Price agreed by phone";
+    return (j.currency === "LRD" ? "LD " : "$") + Number(j.amount).toLocaleString();
+  }
+  function statusText(j) {
+    var s = {
+      open: "Open", accepted: "Accepted", price_proposed: "New price waiting",
+      confirmed: "Confirmed", held: "Money held", in_progress: "Working",
+      worker_done: "Waiting for poster", completed: "Done", cancelled: "Cancelled",
+    }[j.status] || j.status;
+    if (j.paymentState === "held") s += " · Jackwork has the money";
+    if (j.paymentState === "paid") s += " · Paid out (simulated)";
+    return s;
+  }
+  async function loadData() {
+    var d = await call("adminGetData", { sessionToken: token });
+    if (!d.ok) {
+      el("data").classList.add("hidden");
+      el("signin").classList.remove("hidden");
+      el("signMsg").textContent = d.error || "This area is only for the Jackwork owner.";
+      return;
+    }
+    el("signin").classList.add("hidden");
+    el("data").classList.remove("hidden");
+    var c = d.counts;
+    var counts = [
+      [c.profiles, "Profiles"], [c.jobsOpen, "Jobs open"], [c.jobsWorking, "Jobs working"],
+      [c.problems, "Problems"], [c.jobsDone, "Jobs done"],
+    ];
+    el("counts").innerHTML = counts.map(function (x) {
+      return '<div class="glass count"><b>' + x[0] + '</b><span>' + x[1] + "</span></div>";
+    }).join("");
+    el("jobs").innerHTML = d.jobs.length ? d.jobs.map(function (j) {
+      return '<div class="glass row"><div class="t">' + esc(j.title) + '</div><div class="d">' +
+        "Poster: " + esc(j.posterName || "none") + " · Worker: " + esc(j.workerName || "none") + "<br>" +
+        esc(j.place || "") + " · " + money(j) + "<br>" + esc(statusText(j)) +
+        (j.problemReported ? ' · <span class="flag">Problem reported' + (j.problemBy ? " by " + esc(j.problemBy) : "") + "</span>" : "") +
+        "</div></div>";
+    }).join("") : '<p class="sub">No jobs yet.</p>';
+    el("profiles").innerHTML = d.profiles.length ? d.profiles.map(function (p) {
+      return '<div class="glass row"><div class="t">' + esc(p.name) + '</div><div class="d">' +
+        esc(p.phone) + "<br>" + esc(p.place || "") + "<br>" +
+        "Posted " + p.jobsPosted + " · Done " + p.jobsDone + "</div></div>";
+    }).join("") : '<p class="sub">No profiles yet.</p>';
+  }
+
+  el("getCode").addEventListener("click", async function () {
+    el("signMsg").textContent = "";
+    var phone = el("phone").value.trim();
+    try {
+      var d = await call("requestSignInCode", { phone: phone });
+      el("step1").classList.add("hidden");
+      el("step2").classList.remove("hidden");
+      el("codeShown").textContent = d.deliveredCode ? "Your code is " + d.deliveredCode : "";
+    } catch (e) {
+      el("signMsg").textContent = e.message;
+    }
+  });
+  el("verify").addEventListener("click", async function () {
+    el("signMsg").textContent = "";
+    try {
+      var d = await call("verifySignInCode", {
+        phone: el("phone").value.trim(),
+        code: el("code").value.trim(),
+        name: el("name").value.trim() || undefined,
+      });
+      if (!d.ok || !d.sessionToken) {
+        el("signMsg").textContent = d.error || "That code did not work.";
+        return;
+      }
+      token = d.sessionToken;
+      await loadData();
+    } catch (e) {
+      el("signMsg").textContent = e.message;
+    }
+  });
+  el("refresh").addEventListener("click", function () { loadData().catch(function () {}); });
+</script>
+</body>
+</html>

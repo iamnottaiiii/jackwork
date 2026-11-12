@@ -115,6 +115,7 @@ def main():
         ("asset_style.bin", open(css_files[0], "rb").read(), "application/octet-stream"),
         ("asset_icon192.bin", open(icon192[0], "rb").read(), "application/octet-stream"),
         ("asset_icon512.bin", open(icon512[0], "rb").read(), "application/octet-stream"),
+        ("asset_admin.bin", open(os.path.join(REPO, "worker", "admin.html"), "rb").read(), "application/octet-stream"),
     ]
     with open(os.path.join(REPO, "worker", "worker.js"), "rb") as f:
         code = f.read()

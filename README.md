@@ -9,14 +9,17 @@ Live at https://jackwork.bjvfi.com
 
 ## How it runs
 
-- `web/` is the static client build, byte-identical to the production
-  bundle of the Jackwork Space it was rehosted from. It talks to the
-  backend by POSTing `{action, args}` JSON to `./actions` on the same host.
+- `web/` is the static client build, built from the `source/` snapshot.
+  It talks to the backend by POSTing `{action, args}` JSON to `./actions`
+  on the same host.
 - `worker/worker.js` is ONE Cloudflare Worker. It serves the static build
   and answers every action call (profiles, sign-in codes, jobs, ratings)
   from a Cloudflare D1 database, with the schema in `worker/schema.sql`.
   Uploaded photos (profile pictures, ID documents) are stored in a `blobs`
   table in the same database and served by the worker under `/blobs/`.
+  The same worker serves a separate view-only admin page at `/admin`
+  (`worker/admin.html`), gated to the owner's own phone number through
+  the same sign-in code flow. Nothing in the user app links to it.
 - `tools/` holds the deploy scripts used from the Muse workspace. They
   talk to the Cloudflare API through the owner's connected account and are
   kept here so the setup can be maintained and redeployed.
@@ -27,8 +30,10 @@ Live at https://jackwork.bjvfi.com
 
 - Sign-in codes are shown on screen, because no SMS texting line is
   connected yet. This is test behavior, not the final sign-in.
-- Mobile Money is on hold by the owner's decision. Profiles store a Mobile
-  Money number, but no money moves through the app.
+- Mobile Money is on hold by the owner's decision. The job flow rehearses
+  the approved structure with taps only (poster marks the money sent,
+  Jackwork shows it held, completion shows a payout message), but no real
+  money moves through the app and no merchant number exists yet.
 - Brewerville's communities are in the place data but Brewerville itself
   has no surveyed town point in the source dataset, so it cannot be picked
   yet. Nothing was invented to fill that gap.

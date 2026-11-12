@@ -14,6 +14,7 @@ import mainJs from "./asset_main.bin";
 import styleCss from "./asset_style.bin";
 import icon192 from "./asset_icon192.bin";
 import icon512 from "./asset_icon512.bin";
+import adminHtml from "./asset_admin.bin";
 
 /* ---------------- helpers ---------------- */
 
@@ -1041,6 +1042,76 @@ const Actions = {
     return { ok: true };
   },
 
+  async adminGetData(env, args) {
+    // Separate admin view, only for the owner's own phone number. The
+    // caller's identity comes from the session token; a caller-supplied
+    // phone number is never trusted. Any other number gets a plain
+    // refusal and no data at all.
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const refusal = {
+      ok: false,
+      error: "This area is only for the Jackwork owner.",
+      counts: { profiles: 0, jobsOpen: 0, jobsWorking: 0, problems: 0, jobsDone: 0 },
+      jobs: [],
+      profiles: [],
+    };
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor || !samePhone(actor.phone, ADMIN_PHONE)) return refusal;
+    await autoCompleteDueJobs(env);
+    const countRows = await allRows(
+      env,
+      `SELECT
+         (SELECT COUNT(*) FROM profiles) AS profiles,
+         (SELECT COUNT(*) FROM jobs WHERE status = 'open') AS jobs_open,
+         (SELECT COUNT(*) FROM jobs WHERE status = 'in_progress') AS jobs_working,
+         (SELECT COUNT(*) FROM jobs WHERE problem_reported = 1) AS problems,
+         (SELECT COUNT(*) FROM jobs WHERE status = 'completed') AS jobs_done`,
+    );
+    const c = countRows[0] || {};
+    const jobRows = await allRows(env, `SELECT * FROM jobs ORDER BY created_at DESC`);
+    const profileRows = await allRows(env, `SELECT * FROM profiles ORDER BY id ASC`);
+    const postedBy = new Map();
+    const doneBy = new Map();
+    for (const j of jobRows) {
+      if (j.customer_profile_id != null) postedBy.set(j.customer_profile_id, (postedBy.get(j.customer_profile_id) || 0) + 1);
+      if (j.provider_id != null && j.status === "completed") doneBy.set(j.provider_id, (doneBy.get(j.provider_id) || 0) + 1);
+    }
+    const townPart = (loc) => (loc || "").split(",")[0].trim();
+    return {
+      ok: true,
+      error: null,
+      counts: {
+        profiles: c.profiles || 0,
+        jobsOpen: c.jobs_open || 0,
+        jobsWorking: c.jobs_working || 0,
+        problems: c.problems || 0,
+        jobsDone: c.jobs_done || 0,
+      },
+      jobs: jobRows.slice(0, 500).map((j) => ({
+        id: j.id,
+        title: j.title,
+        posterName: j.customer_name || "",
+        workerName: j.provider_name || null,
+        place: j.landmark || townPart(j.location),
+        amount: j.budget_amount ?? null,
+        currency: j.budget_currency || "LRD",
+        status: j.status,
+        paymentState: j.payment_state || "waiting",
+        problemReported: !!j.problem_reported,
+        problemBy: j.problem_by || null,
+        createdAt: new Date(j.created_at).toISOString(),
+      })),
+      profiles: profileRows.map((p) => ({
+        id: p.id,
+        name: p.full_name,
+        phone: p.phone,
+        place: [p.community || p.city || "", p.county || ""].filter(Boolean).join(", "),
+        jobsPosted: postedBy.get(p.id) || 0,
+        jobsDone: doneBy.get(p.id) || 0,
+      })),
+    };
+  },
+
   async listAllProfiles(env, args) {
     let limit = 200;
     if (args.limit !== undefined && args.limit !== null) {
@@ -1121,6 +1192,12 @@ export default {
     }
 
     if (request.method === "GET" || request.method === "HEAD") {
+      if (path === "/admin") {
+        // The separate admin page. It is not linked from the user app,
+        // and it shows no data until the owner number signs in and the
+        // token-checked adminGetData action answers.
+        return assetResponse(adminHtml, "text/html; charset=utf-8", "no-store");
+      }
       if (path === "/" || path === "/index.html") {
         return assetResponse(indexHtml, "text/html; charset=utf-8", "no-cache");
       }

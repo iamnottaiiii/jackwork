@@ -119,6 +119,14 @@ type ProfileRow = typeof schema.profiles.$inferSelect;
     the job completes automatically and the simulated payout shows. */
 const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The owner's own phone number. It is the only number the separate
+ * /admin page (served by the live Worker, not part of this app) can
+ * sign in with; adminGetData checks the session token's profile
+ * against it and returns no data to anyone else.
+ */
+const ADMIN_PHONE = "+12297120887";
+
 function publicPlace(row: JobRow): string {
   if (row.landmark?.trim()) return row.landmark.trim();
   return row.location.split(",")[0]?.trim() || row.location;
@@ -1391,6 +1399,103 @@ export const Actions = {
   }),
 
   /* ---------------- profile list (board photos and places) ---------------- */
+
+  adminGetData: defineAction({
+    description: "Data for the separate /admin page (served outside this app). Only the owner's own phone number, proven by the session token, receives data; every other caller gets a refusal with empty lists. View only.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({
+      ok: z.boolean(),
+      error: z.string().nullable(),
+      counts: z.object({
+        profiles: z.number(),
+        jobsOpen: z.number(),
+        jobsWorking: z.number(),
+        problems: z.number(),
+        jobsDone: z.number(),
+      }),
+      jobs: z.array(z.object({
+        id: z.number(),
+        title: z.string(),
+        posterName: z.string(),
+        workerName: z.string().nullable(),
+        place: z.string(),
+        amount: z.number().nullable(),
+        currency: z.string(),
+        status: z.string(),
+        paymentState: z.string(),
+        problemReported: z.boolean(),
+        problemBy: z.string().nullable(),
+        createdAt: z.string(),
+      })),
+      profiles: z.array(z.object({
+        id: z.number(),
+        name: z.string(),
+        phone: z.string(),
+        place: z.string(),
+        jobsPosted: z.number(),
+        jobsDone: z.number(),
+      })),
+    }),
+    async handler(ctx, args) {
+      const empty = {
+        counts: { profiles: 0, jobsOpen: 0, jobsWorking: 0, problems: 0, jobsDone: 0 },
+        jobs: [] as never[],
+        profiles: [] as never[],
+      };
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor || !samePhone(actor.phone, ADMIN_PHONE)) {
+        return { ok: false, error: "This area is only for the Jackwork owner.", ...empty };
+      }
+      await autoCompleteDueJobs(ctx);
+      const db = ctx.db<typeof schema>();
+      const allProfiles = await db.select().from(schema.profiles);
+      const allJobs = await db
+        .select()
+        .from(schema.jobs)
+        .orderBy(desc(schema.jobs.createdAt));
+      const postedBy = new Map<number, number>();
+      const doneBy = new Map<number, number>();
+      for (const j of allJobs) {
+        if (j.customerProfileId != null) postedBy.set(j.customerProfileId, (postedBy.get(j.customerProfileId) ?? 0) + 1);
+        if (j.providerId != null && j.status === "completed") doneBy.set(j.providerId, (doneBy.get(j.providerId) ?? 0) + 1);
+      }
+      return {
+        ok: true,
+        error: null,
+        counts: {
+          profiles: allProfiles.length,
+          jobsOpen: allJobs.filter((j) => j.status === "open").length,
+          jobsWorking: allJobs.filter((j) => j.status === "in_progress").length,
+          problems: allJobs.filter((j) => j.problemReported).length,
+          jobsDone: allJobs.filter((j) => j.status === "completed").length,
+        },
+        jobs: allJobs.slice(0, 500).map((j) => ({
+          id: j.id,
+          title: j.title,
+          posterName: j.customerName ?? "",
+          workerName: j.providerName ?? null,
+          place: j.landmark ?? ((j.location ?? "").split(",")[0] ?? "").trim(),
+          amount: j.budgetAmount ?? null,
+          currency: j.budgetCurrency ?? "LRD",
+          status: j.status,
+          paymentState: j.paymentState ?? "waiting",
+          problemReported: !!j.problemReported,
+          problemBy: j.problemBy ?? null,
+          createdAt: j.createdAt?.toISOString() ?? new Date(0).toISOString(),
+        })),
+        profiles: allProfiles.map((p) => ({
+          id: p.id,
+          name: p.fullName,
+          phone: p.phone,
+          place: [p.community ?? p.city ?? "", p.county ?? ""].filter(Boolean).join(", "),
+          jobsPosted: postedBy.get(p.id) ?? 0,
+          jobsDone: doneBy.get(p.id) ?? 0,
+        })),
+      };
+    },
+  }),
 
   listAllProfiles: defineAction({
     description: "Lists board-safe profile cards newest first: only the id, profile photo, and picked place the Find work board shows on job cards. ID, phone, Mobile Money, and birth details are never included.",
