@@ -92,6 +92,43 @@ const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
 
 const ADMIN_PHONE = "+12297120887";
 
+/* Text message notifications: the sending path exists, behind
+   provider config. All three stay UNSET until a real SMS line is
+   connected later: SMS_PROVIDER (the provider's HTTPS send
+   endpoint), SMS_API_KEY, SMS_SENDER_ID. While any of them is
+   unset, no text is sent, nothing anywhere claims one was, and
+   every notification records sms_status 'waiting_for_line'. */
+const SMS_PROVIDER = "";
+const SMS_API_KEY = "";
+const SMS_SENDER_ID = "";
+
+function smsConfigured() {
+  return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
+}
+
+async function sendNotificationSms(phone, text) {
+  /* Only ever called when a provider line is connected. Posts the
+     message as JSON to the provider endpoint with the API key as
+     a bearer token. Returns "sent" or "failed". */
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const resp = await fetch(SMS_PROVIDER, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${SMS_API_KEY}` },
+        body: JSON.stringify({ from: SMS_SENDER_ID, to: phone, text }),
+        signal: ctrl.signal,
+      });
+      return resp.ok ? "sent" : "failed";
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return "failed";
+  }
+}
+
 async function allRows(env, sql, params = []) {
   const r = await env.DB.prepare(sql).bind(...params).all();
   return r.results || [];
@@ -191,6 +228,13 @@ function isWorker(job, actor) {
 async function autoCompleteDueJobs(env) {
   const dueBefore = Date.now() - AUTO_CONFIRM_MS;
   const now = Date.now();
+  const due = await allRows(
+    env,
+    `SELECT * FROM jobs WHERE status = 'worker_done' AND problem_reported = 0
+       AND worker_done_at IS NOT NULL AND worker_done_at <= ?`,
+    [dueBefore],
+  );
+  if (due.length === 0) return;
   await runSql(
     env,
     `UPDATE jobs SET status = 'completed', payment_state = 'paid', completed_at = ?,
@@ -199,6 +243,162 @@ async function autoCompleteDueJobs(env) {
        AND worker_done_at IS NOT NULL AND worker_done_at <= ?`,
     [now, now, dueBefore],
   );
+  for (const job of due) {
+    await notifyJobEvent(env, job.provider_id, job, "completed", completedNotificationText(job));
+  }
+}
+
+/* ---------------- notifications ----------------
+   One row per job event for the person it concerns, then the
+   same one line goes out as a Web Push to their subscriptions,
+   and as a text message when an SMS line is connected. A failed
+   notification never breaks the job action that caused it. */
+
+/* PUSH-BEGIN (pure Web Push crypto, standard protocol: VAPID
+   ES256 JWT plus aes128gcm payload encryption, RFC 8291 and
+   RFC 8188. The test harness lifts this section out and
+   round-trips it in Node.) */
+function b64UrlToBytes(s) {
+  const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+function bytesToB64Url(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function concatBytes(...parts) {
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
+async function hkdfDerive(ikm, salt, info, length) {
+  const key = await crypto.subtle.importKey("raw", ikm, { name: "HKDF" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, length * 8);
+  return new Uint8Array(bits);
+}
+async function vapidSigningKey(privateB64Url, publicB64Url) {
+  const pub = b64UrlToBytes(publicB64Url);
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    x: bytesToB64Url(pub.slice(1, 33)),
+    y: bytesToB64Url(pub.slice(33, 65)),
+    d: privateB64Url,
+  };
+  return crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+}
+async function createVapidJwt(audience, subject, privateB64Url, publicB64Url) {
+  const enc = new TextEncoder();
+  const header = bytesToB64Url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = bytesToB64Url(
+    enc.encode(JSON.stringify({ aud: audience, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject })),
+  );
+  const signingInput = `${header}.${payload}`;
+  const key = await vapidSigningKey(privateB64Url, publicB64Url);
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(signingInput));
+  return `${signingInput}.${bytesToB64Url(new Uint8Array(sig))}`;
+}
+async function encryptPushPayload(p256dhB64Url, authB64Url, plaintext) {
+  const uaPublic = b64UrlToBytes(p256dhB64Url);
+  const authSecret = b64UrlToBytes(authB64Url);
+  const serverPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const serverPublic = new Uint8Array(await crypto.subtle.exportKey("raw", serverPair.publicKey));
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, serverPair.privateKey, 256));
+  const enc = new TextEncoder();
+  const ikm = await hkdfDerive(shared, authSecret, concatBytes(enc.encode("WebPush: info\0"), uaPublic, serverPublic), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdfDerive(ikm, salt, enc.encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdfDerive(ikm, salt, enc.encode("Content-Encoding: nonce\0"), 12);
+  const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]);
+  const record = concatBytes(plaintext, new Uint8Array([2]));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, tagLength: 128 }, aesKey, record));
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, 4096);
+  return concatBytes(salt, rs, new Uint8Array([serverPublic.length]), serverPublic, cipher);
+}
+/* PUSH-END */
+
+async function sendWebPush(env, sub, payloadText) {
+  const publicKey = env.VAPID_PUBLIC_KEY;
+  const privateKey = env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return;
+  try {
+    const endpoint = new URL(sub.endpoint);
+    const jwt = await createVapidJwt(endpoint.origin, "mailto:contact@bjvfi.com", privateKey, publicKey);
+    const body = await encryptPushPayload(sub.p256dh, sub.auth, new TextEncoder().encode(payloadText));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let resp;
+    try {
+      resp = await fetch(sub.endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `vapid t=${jwt}, k=${publicKey}`,
+          "content-encoding": "aes128gcm",
+          "content-type": "application/octet-stream",
+          ttl: "86400",
+        },
+        body,
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    /* A push service that says the subscription is gone (404 or
+       410) loses it here; any other failure keeps it. */
+    if (resp.status === 404 || resp.status === 410) {
+      await runSql(env, "DELETE FROM push_subscriptions WHERE id = ?", [sub.id]);
+    }
+  } catch {
+    /* A failed push never breaks the job action. */
+  }
+}
+
+function jobMoneyText(job) {
+  if (job.budget_amount == null) return null;
+  const sym = job.budget_currency === "LRD" ? "LD " : "$";
+  return `${sym}${Number(job.budget_amount).toLocaleString("en-US")}`;
+}
+
+function completedNotificationText(job) {
+  const amt = jobMoneyText(job);
+  return amt ? `Job done: ${job.title}. Jackwork sent ${amt} to your Mobile Money` : `Job done: ${job.title}`;
+}
+
+async function notifyJobEvent(env, profileId, job, kind, text) {
+  if (!profileId) return;
+  try {
+    const res = await runSql(
+      env,
+      "INSERT INTO notifications (profile_id, job_id, kind, text, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      [profileId, job?.id ?? null, kind, text, smsConfigured() ? "pending" : "waiting_for_line", Date.now()],
+    );
+    if (smsConfigured()) {
+      const target = await firstRow(env, "SELECT phone FROM profiles WHERE id = ?", [profileId]);
+      if (target?.phone) {
+        const st = await sendNotificationSms(target.phone, text);
+        await runSql(env, "UPDATE notifications SET sms_status = ? WHERE id = ?", [st, res.meta.last_row_id]);
+      }
+    }
+    const subs = await allRows(env, "SELECT * FROM push_subscriptions WHERE profile_id = ?", [profileId]);
+    for (const s of subs) {
+      await sendWebPush(env, s, JSON.stringify({ text, jobId: job?.id ?? null }));
+    }
+  } catch {
+    /* Notifications never break the job action that caused them. */
+  }
 }
 
 const PROOF_MIMES = ["image/", "video/", "audio/"];
@@ -741,6 +941,7 @@ const Actions = {
          payment_state = 'waiting', updated_at = ? WHERE id = ?`,
       [actor.full_name, actor.phone, actor.id, Date.now(), jobId],
     );
+    await notifyJobEvent(env, job.customer_profile_id, job, "accepted", `A worker accepted your job: ${job.title}`);
     return { ok: true, error: null };
   },
 
@@ -754,6 +955,7 @@ const Actions = {
     if (job.status !== "accepted") return { ok: false, error: "This job is not waiting for your call confirmation." };
     const now = Date.now();
     await runSql(env, "UPDATE jobs SET status = 'confirmed', worker_confirmed_at = ?, updated_at = ? WHERE id = ?", [now, now, jobId]);
+    await notifyJobEvent(env, job.customer_profile_id, job, "confirmed", `The worker confirmed your job: ${job.title}`);
     return { ok: true, error: null };
   },
 
@@ -774,6 +976,16 @@ const Actions = {
          price_proposed_at = ?, updated_at = ? WHERE id = ?`,
       [now, amount, now, now, jobId],
     );
+    const proposedText = jobMoneyText({ budget_amount: amount, budget_currency: job.budget_currency });
+    await notifyJobEvent(
+      env,
+      job.customer_profile_id,
+      job,
+      "price_proposed",
+      proposedText
+        ? `The worker proposed a new price, ${proposedText}, for your job: ${job.title}`
+        : `The worker proposed a new price for your job: ${job.title}`,
+    );
     return { ok: true, error: null };
   },
 
@@ -789,6 +1001,7 @@ const Actions = {
       return { ok: false, error: "This job is not waiting on a new price." };
     }
     const now = Date.now();
+    const workerId = job.provider_id;
     if (args.accept) {
       await runSql(
         env,
@@ -796,6 +1009,7 @@ const Actions = {
            price_proposed_at = NULL, updated_at = ? WHERE id = ?`,
         [job.proposed_budget_amount, now, jobId],
       );
+      await notifyJobEvent(env, workerId, job, "price_accepted", `Your new price was accepted for the job: ${job.title}`);
     } else {
       await runSql(
         env,
@@ -804,6 +1018,7 @@ const Actions = {
            payment_state = 'waiting', payment_marked_at = NULL, updated_at = ? WHERE id = ?`,
         [now, jobId],
       );
+      await notifyJobEvent(env, workerId, job, "price_declined", `The poster said no to your new price, and the job is open again: ${job.title}`);
     }
     return { ok: true, error: null };
   },
@@ -824,6 +1039,7 @@ const Actions = {
       "UPDATE jobs SET status = 'held', payment_state = 'held', payment_marked_at = ?, updated_at = ? WHERE id = ?",
       [now, now, jobId],
     );
+    await notifyJobEvent(env, job.provider_id, job, "money_held", `Jackwork has the money for the job: ${job.title}`);
     return { ok: true, error: null };
   },
 
@@ -854,6 +1070,7 @@ const Actions = {
       "UPDATE jobs SET status = 'in_progress', before_proof_blob_key = ?, before_proof_mime = ?, updated_at = ? WHERE id = ?",
       [key, mime, Date.now(), jobId],
     );
+    await notifyJobEvent(env, job.customer_profile_id, job, "started", `The worker started your job: ${job.title}`);
     return { ok: true, error: null };
   },
 
@@ -884,6 +1101,7 @@ const Actions = {
          after_proof_mime = ?, updated_at = ? WHERE id = ?`,
       [now, key, mime, now, jobId],
     );
+    await notifyJobEvent(env, job.customer_profile_id, job, "worker_done", `The worker says your job is done: ${job.title}`);
     return { ok: true, error: null };
   },
 
@@ -903,6 +1121,7 @@ const Actions = {
          completed_at = ?, auto_completed = 0, updated_at = ? WHERE id = ?`,
       [now, now, now, jobId],
     );
+    await notifyJobEvent(env, job.provider_id, job, "completed", completedNotificationText(job));
     return { ok: true, error: null };
   },
 
@@ -923,6 +1142,13 @@ const Actions = {
       env,
       "UPDATE jobs SET problem_reported = 1, problem_by = ?, problem_at = ?, updated_at = ? WHERE id = ?",
       [poster ? "poster" : "worker", now, now, jobId],
+    );
+    await notifyJobEvent(
+      env,
+      poster ? job.provider_id : job.customer_profile_id,
+      job,
+      "problem",
+      `A problem was reported on the job: ${job.title}`,
     );
     return { ok: true, error: null };
   },
@@ -1043,6 +1269,57 @@ const Actions = {
     return { ok: true };
   },
 
+  async listNotifications(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { notifications: [], vapidPublicKey: null };
+    const rows = await allRows(
+      env,
+      "SELECT * FROM notifications WHERE profile_id = ? ORDER BY id DESC LIMIT 200",
+      [actor.id],
+    );
+    const notifications = rows.map((n) => ({
+      id: n.id,
+      jobId: n.job_id ?? null,
+      kind: n.kind,
+      text: n.text,
+      createdAt: new Date(n.created_at).toISOString(),
+      unread: n.read_at == null,
+    }));
+    /* Opening the list marks them all seen. The rows above keep
+       the unread flag they had when the list was opened, so the
+       red dots show on this visit and are gone on the next. */
+    await runSql(env, "UPDATE notifications SET read_at = ? WHERE profile_id = ? AND read_at IS NULL", [Date.now(), actor.id]);
+    return { notifications, vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null };
+  },
+
+  async savePushSubscription(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const endpoint = reqStr(args.endpoint, "endpoint", 10, 2000);
+    if (!endpoint.startsWith("https://")) throw bad("Invalid endpoint.");
+    const p256dh = reqStr(args.p256dh, "p256dh", 10, 500);
+    const auth = reqStr(args.auth, "auth", 8, 200);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false, error: "Sign in again." };
+    await runSql(
+      env,
+      `INSERT INTO push_subscriptions (profile_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET profile_id = excluded.profile_id,
+         p256dh = excluded.p256dh, auth = excluded.auth, created_at = excluded.created_at`,
+      [actor.id, endpoint, p256dh, auth, Date.now()],
+    );
+    return { ok: true, error: null };
+  },
+
+  async deletePushSubscription(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const endpoint = reqStr(args.endpoint, "endpoint", 10, 2000);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false, error: "Sign in again." };
+    await runSql(env, "DELETE FROM push_subscriptions WHERE profile_id = ? AND endpoint = ?", [actor.id, endpoint]);
+    return { ok: true, error: null };
+  },
+
   async adminGetData(env, args) {
     // Separate admin view, only for the owner's own phone number. The
     // caller's identity comes from the session token; a caller-supplied
@@ -1136,6 +1413,25 @@ const Actions = {
   },
 };
 
+/* The push service worker: shows the notification the Worker
+   sent, and opens the app when it is tapped. */
+const SW_JS = `self.addEventListener("push", function (event) {
+  var text = "You have a new notification.";
+  var jobId = null;
+  try {
+    var d = event.data ? event.data.json() : null;
+    if (d && d.text) { text = d.text; jobId = d.jobId || null; }
+  } catch (e) {
+    try { text = event.data.text(); } catch (e2) {}
+  }
+  event.waitUntil(self.registration.showNotification("Jackwork", { body: text, icon: "/favicon.ico", data: { jobId: jobId } }));
+});
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  event.waitUntil(clients.openWindow("/"));
+});
+`;
+
 /* ---------------- HTTP ---------------- */
 
 function jsonResponse(obj, status = 200) {
@@ -1193,6 +1489,9 @@ export default {
     }
 
     if (request.method === "GET" || request.method === "HEAD") {
+      if (path === "/sw.js") {
+        return assetResponse(SW_JS, "text/javascript; charset=utf-8", "no-cache");
+      }
       if (path === "/admin") {
         // The separate admin page. It is not linked from the user app,
         // and it shows no data until the owner number signs in and the

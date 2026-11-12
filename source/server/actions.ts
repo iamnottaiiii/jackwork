@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionsModule } from "@hatch/space-sdk";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 const jobShape = z.object({
@@ -127,6 +127,210 @@ const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
  * against it and returns no data to anyone else.
  */
 const ADMIN_PHONE = "+12297120887";
+
+/* Text message notifications: the sending path exists, behind
+   provider config. All three stay UNSET until a real SMS line is
+   connected later: SMS_PROVIDER (the provider's HTTPS send
+   endpoint), SMS_API_KEY, SMS_SENDER_ID. While any of them is
+   unset, no text is sent, nothing anywhere claims one was, and
+   every notification records smsStatus "waiting_for_line". In
+   the live Worker the same constants live in worker/worker.js. */
+const SMS_PROVIDER = "";
+const SMS_API_KEY = "";
+const SMS_SENDER_ID = "";
+
+function smsConfigured(): boolean {
+  return !!(SMS_PROVIDER && SMS_API_KEY && SMS_SENDER_ID);
+}
+
+async function sendNotificationSms(phone: string, text: string): Promise<"sent" | "failed"> {
+  /* Only ever called when a provider line is connected. Posts
+     the message as JSON to the provider endpoint with the API
+     key as a bearer token. */
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const resp = await fetch(SMS_PROVIDER, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${SMS_API_KEY}` },
+        body: JSON.stringify({ from: SMS_SENDER_ID, to: phone, text }),
+        signal: ctrl.signal,
+      });
+      return resp.ok ? "sent" : "failed";
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return "failed";
+  }
+}
+
+/* VAPID keys for Web Push. In the live Worker they are Worker
+   secrets (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY), never in the
+   code or the repo; here they are read from the environment the
+   same way. */
+function vapidKeys(): { publicKey: string; privateKey: string } | null {
+  const env = (globalThis as any).process?.env ?? {};
+  const publicKey = env.VAPID_PUBLIC_KEY;
+  const privateKey = env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return null;
+  return { publicKey, privateKey };
+}
+
+/* PUSH-BEGIN (pure Web Push crypto, standard protocol: VAPID
+   ES256 JWT plus aes128gcm payload encryption, RFC 8291 and
+   RFC 8188; identical to the live Worker section.) */
+function b64UrlToBytes(s: string): Uint8Array {
+  const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+function bytesToB64Url(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
+async function hkdfDerive(ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", ikm as any, { name: "HKDF" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: salt as any, info: info as any }, key, length * 8);
+  return new Uint8Array(bits);
+}
+async function vapidSigningKey(privateB64Url: string, publicB64Url: string): Promise<CryptoKey> {
+  const pub = b64UrlToBytes(publicB64Url);
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    x: bytesToB64Url(pub.slice(1, 33)),
+    y: bytesToB64Url(pub.slice(33, 65)),
+    d: privateB64Url,
+  };
+  return crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+}
+async function createVapidJwt(audience: string, subject: string, privateB64Url: string, publicB64Url: string): Promise<string> {
+  const enc = new TextEncoder();
+  const header = bytesToB64Url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = bytesToB64Url(
+    enc.encode(JSON.stringify({ aud: audience, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject })),
+  );
+  const signingInput = `${header}.${payload}`;
+  const key = await vapidSigningKey(privateB64Url, publicB64Url);
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(signingInput) as any);
+  return `${signingInput}.${bytesToB64Url(new Uint8Array(sig))}`;
+}
+async function encryptPushPayload(p256dhB64Url: string, authB64Url: string, plaintext: Uint8Array): Promise<Uint8Array> {
+  const uaPublic = b64UrlToBytes(p256dhB64Url);
+  const authSecret = b64UrlToBytes(authB64Url);
+  const serverPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const serverPublic = new Uint8Array(await crypto.subtle.exportKey("raw", serverPair.publicKey));
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic as any, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, serverPair.privateKey, 256));
+  const enc = new TextEncoder();
+  const ikm = await hkdfDerive(shared, authSecret, concatBytes(enc.encode("WebPush: info\0"), uaPublic, serverPublic), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdfDerive(ikm, salt, enc.encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdfDerive(ikm, salt, enc.encode("Content-Encoding: nonce\0"), 12);
+  const aesKey = await crypto.subtle.importKey("raw", cek as any, { name: "AES-GCM" }, false, ["encrypt"]);
+  const record = concatBytes(plaintext, new Uint8Array([2]));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce as any, tagLength: 128 }, aesKey, record as any));
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, 4096);
+  return concatBytes(salt, rs, new Uint8Array([serverPublic.length]), serverPublic, cipher);
+}
+/* PUSH-END */
+
+async function sendWebPush(ctx: any, sub: { id: number; endpoint: string; p256dh: string; auth: string }, payloadText: string): Promise<void> {
+  const keys = vapidKeys();
+  if (!keys) return;
+  try {
+    const endpoint = new URL(sub.endpoint);
+    const jwt = await createVapidJwt(endpoint.origin, "mailto:contact@bjvfi.com", keys.privateKey, keys.publicKey);
+    const body = await encryptPushPayload(sub.p256dh, sub.auth, new TextEncoder().encode(payloadText));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let resp: Response;
+    try {
+      resp = await fetch(sub.endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `vapid t=${jwt}, k=${keys.publicKey}`,
+          "content-encoding": "aes128gcm",
+          "content-type": "application/octet-stream",
+          ttl: "86400",
+        },
+        body: body as any,
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    /* A push service that says the subscription is gone (404 or
+       410) loses it here; any other failure keeps it. */
+    if (resp.status === 404 || resp.status === 410) {
+      const db = ctx.db();
+      await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, sub.id));
+    }
+  } catch {
+    /* A failed push never breaks the job action. */
+  }
+}
+
+function jobMoneyText(job: { budgetAmount: number | null; budgetCurrency: string }): string | null {
+  if (job.budgetAmount == null) return null;
+  const sym = job.budgetCurrency === "LRD" ? "LD " : "$";
+  return `${sym}${Number(job.budgetAmount).toLocaleString("en-US")}`;
+}
+
+function completedNotificationText(job: JobRow): string {
+  const amt = jobMoneyText(job);
+  return amt ? `Job done: ${job.title}. Jackwork sent ${amt} to your Mobile Money` : `Job done: ${job.title}`;
+}
+
+/** Records one notification for one person, then sends the same
+    one line as a Web Push to their subscriptions, and as a text
+    message when an SMS line is connected. Never throws: a failed
+    notification must not break the job action that caused it. */
+async function notifyJobEvent(ctx: any, profileId: number | null | undefined, job: JobRow, kind: string, text: string): Promise<void> {
+  if (!profileId) return;
+  try {
+    const db = ctx.db();
+    const inserted = await db
+      .insert(schema.notifications)
+      .values({ profileId, jobId: job.id, kind, text, smsStatus: smsConfigured() ? "pending" : "waiting_for_line" })
+      .returning({ id: schema.notifications.id });
+    if (smsConfigured()) {
+      const target = await db
+        .select({ phone: schema.profiles.phone })
+        .from(schema.profiles)
+        .where(eq(schema.profiles.id, profileId))
+        .limit(1);
+      if (target[0]?.phone && inserted[0]) {
+        const st = await sendNotificationSms(target[0].phone, text);
+        await db.update(schema.notifications).set({ smsStatus: st }).where(eq(schema.notifications.id, inserted[0].id));
+      }
+    }
+    const subs = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.profileId, profileId));
+    for (const s of subs) {
+      await sendWebPush(ctx, s, JSON.stringify({ text, jobId: job.id }));
+    }
+  } catch {
+    /* Notifications never break the job action that caused them. */
+  }
+}
 
 function publicPlace(row: JobRow): string {
   if (row.landmark?.trim()) return row.landmark.trim();
@@ -317,6 +521,7 @@ async function autoCompleteDueJobs(ctx: any): Promise<void> {
         .update(schema.jobs)
         .set({ status: "completed", paymentState: "paid", completedAt: now, autoCompleted: 1, updatedAt: now })
         .where(eq(schema.jobs.id, job.id));
+      await notifyJobEvent(ctx, job.providerId, job, "completed", completedNotificationText(job));
     }
   }
 }
@@ -968,6 +1173,7 @@ export const Actions = {
           updatedAt: new Date(),
         })
         .where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.customerProfileId, job, "accepted", `A worker accepted your job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -991,6 +1197,7 @@ export const Actions = {
         .update(schema.jobs)
         .set({ status: "confirmed", workerConfirmedAt: new Date(), updatedAt: new Date() })
         .where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.customerProfileId, job, "confirmed", `The worker confirmed your job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1022,6 +1229,16 @@ export const Actions = {
           updatedAt: now,
         })
         .where(eq(schema.jobs.id, args.jobId));
+      const proposedText = jobMoneyText({ budgetAmount: args.amount, budgetCurrency: job.budgetCurrency });
+      await notifyJobEvent(
+        ctx,
+        job.customerProfileId,
+        job,
+        "price_proposed",
+        proposedText
+          ? `The worker proposed a new price, ${proposedText}, for your job: ${job.title}`
+          : `The worker proposed a new price for your job: ${job.title}`,
+      );
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1045,6 +1262,7 @@ export const Actions = {
         return { ok: false, error: "This job is not waiting on a new price." };
       }
       const now = new Date();
+      const workerId = job.providerId;
       if (args.accept) {
         await db
           .update(schema.jobs)
@@ -1056,6 +1274,7 @@ export const Actions = {
             updatedAt: now,
           })
           .where(eq(schema.jobs.id, args.jobId));
+        await notifyJobEvent(ctx, workerId, job, "price_accepted", `Your new price was accepted for the job: ${job.title}`);
       } else {
         await db
           .update(schema.jobs)
@@ -1072,6 +1291,7 @@ export const Actions = {
             updatedAt: now,
           })
           .where(eq(schema.jobs.id, args.jobId));
+        await notifyJobEvent(ctx, workerId, job, "price_declined", `The poster said no to your new price, and the job is open again: ${job.title}`);
       }
       ctx.invalidateQueries();
       return { ok: true, error: null };
@@ -1099,6 +1319,7 @@ export const Actions = {
         .update(schema.jobs)
         .set({ status: "held", paymentState: "held", paymentMarkedAt: now, updatedAt: now })
         .where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.providerId, job, "money_held", `Jackwork has the money for the job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1134,6 +1355,7 @@ export const Actions = {
         patch.beforeProofMime = args.mimeType;
       }
       await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.customerProfileId, job, "started", `The worker started your job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1168,6 +1390,7 @@ export const Actions = {
         patch.afterProofMime = args.mimeType;
       }
       await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.customerProfileId, job, "worker_done", `The worker says your job is done: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1193,6 +1416,7 @@ export const Actions = {
         .update(schema.jobs)
         .set({ status: "completed", paymentState: "paid", posterConfirmedAt: now, completedAt: now, autoCompleted: 0, updatedAt: now })
         .where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(ctx, job.providerId, job, "completed", completedNotificationText(job));
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1221,6 +1445,13 @@ export const Actions = {
         .update(schema.jobs)
         .set({ problemReported: 1, problemBy: poster ? "poster" : "worker", problemAt: now, updatedAt: now })
         .where(eq(schema.jobs.id, args.jobId));
+      await notifyJobEvent(
+        ctx,
+        poster ? job.providerId : job.customerProfileId,
+        job,
+        "problem",
+        `A problem was reported on the job: ${job.title}`,
+      );
       ctx.invalidateQueries();
       return { ok: true, error: null };
     },
@@ -1401,6 +1632,92 @@ export const Actions = {
   }),
 
   /* ---------------- profile list (board photos and places) ---------------- */
+
+  listNotifications: defineAction({
+    description: "The signed-in person's notifications, newest first. Opening the list marks them all seen; each row keeps the unread flag it had when the list was opened, so the red dots show on that visit and are gone on the next. Also returns the Web Push public key (null when push is not set up).",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({
+      notifications: z.array(
+        z.object({
+          id: z.number(),
+          jobId: z.number().nullable(),
+          kind: z.string(),
+          text: z.string(),
+          createdAt: z.string(),
+          unread: z.boolean(),
+        }),
+      ),
+      vapidPublicKey: z.string().nullable(),
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { notifications: [], vapidPublicKey: null };
+      const rows = await db
+        .select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.profileId, actor.id))
+        .orderBy(desc(schema.notifications.id))
+        .limit(200);
+      const notifications = rows.map((n) => ({
+        id: n.id,
+        jobId: n.jobId ?? null,
+        kind: n.kind,
+        text: n.text,
+        createdAt: n.createdAt.toISOString(),
+        unread: n.readAt == null,
+      }));
+      await db
+        .update(schema.notifications)
+        .set({ readAt: new Date() })
+        .where(and(eq(schema.notifications.profileId, actor.id), isNull(schema.notifications.readAt)));
+      return { notifications, vapidPublicKey: vapidKeys()?.publicKey ?? null };
+    },
+  }),
+
+  savePushSubscription: defineAction({
+    description: "Saves the person's Web Push subscription for this browser or installed app, so job notifications also arrive as phone notifications.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+      endpoint: z.string().min(10).max(2000).startsWith("https://"),
+      p256dh: z.string().min(10).max(500),
+      auth: z.string().min(8).max(200),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again." };
+      await db
+        .insert(schema.pushSubscriptions)
+        .values({ profileId: actor.id, endpoint: args.endpoint, p256dh: args.p256dh, auth: args.auth })
+        .onConflictDoUpdate({
+          target: schema.pushSubscriptions.endpoint,
+          set: { profileId: actor.id, p256dh: args.p256dh, auth: args.auth, createdAt: new Date() },
+        });
+      return { ok: true, error: null };
+    },
+  }),
+
+  deletePushSubscription: defineAction({
+    description: "Removes one of the person's Web Push subscriptions, by endpoint.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+      endpoint: z.string().min(10).max(2000),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again." };
+      await db
+        .delete(schema.pushSubscriptions)
+        .where(and(eq(schema.pushSubscriptions.profileId, actor.id), eq(schema.pushSubscriptions.endpoint, args.endpoint)));
+      return { ok: true, error: null };
+    },
+  }),
 
   adminGetData: defineAction({
     description: "Data for the separate /admin page (served outside this app). Only the owner's own phone number, proven by the session token, receives data; every other caller gets a refusal with empty lists. View only.",

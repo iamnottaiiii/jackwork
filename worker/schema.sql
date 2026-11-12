@@ -135,3 +135,33 @@ ALTER TABLE profiles ADD COLUMN work_prefs_answered INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_profiles_session_token ON profiles (session_token);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
 CREATE INDEX IF NOT EXISTS idx_signin_codes_phone ON signin_codes (phone);
+
+-- Notifications: one row per event, addressed to one person. The
+-- in-app list reads these. read_at is set when the person opens
+-- the list. sms_status records what happened with the text
+-- message for the same event: while no SMS line is connected it
+-- stays 'waiting_for_line' and no text is sent.
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL,
+  job_id INTEGER,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  sms_status TEXT NOT NULL DEFAULT 'waiting_for_line',
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
+);
+
+-- Web Push subscriptions, one per browser or installed app the
+-- person turned phone notifications on from.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_profile ON notifications (profile_id, id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_profile ON push_subscriptions (profile_id);

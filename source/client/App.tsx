@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fileToBase64 } from "@hatch/space-sdk/client";
 import { api, type ApiResponse } from "./api";
@@ -905,6 +905,7 @@ function I({ d, size = 18 }: { d: string; size?: number }) {
 }
 const PinIcon = () => <I d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />;
 const PhoneIcon = () => <I d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.34 1.79.66 2.64a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.44-1.23a2 2 0 0 1 2.11-.45c.85.32 1.74.54 2.64.66A2 2 0 0 1 22 16.92z" />;
+const BellIcon = () => <I d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0" />;
 const ShieldIcon = () => <I d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10Z M9 11.5l2 2 4-4.5" />;
 const BackIcon = () => <I d="M19 12H5 M11 6l-6 6 6 6" />;
 const CheckIcon = () => <I d="M20 6 9 17l-5-5" size={22} />;
@@ -1817,6 +1818,143 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
       <button type="button" disabled={busy} onClick={sendCode} className="mt-2 w-full py-3 text-center text-base font-bold text-[var(--dim)]" aria-label="Send a new code">
         Send a new code
       </button>
+    </Screen>
+  );
+}
+
+/* ================================================================
+   NOTIFICATIONS — one list, newest first, one line each. A red
+   dot marks the ones not yet seen; opening this list marks them
+   seen on the server, so the dots are gone next time. Tapping a
+   notification opens that job. Phone notifications (Web Push)
+   are turned on from here only, with the one button below.
+   ================================================================ */
+function urlB64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+function keyBytesToB64Url(bytes: ArrayBuffer | null): string {
+  if (!bytes) return "";
+  let bin = "";
+  const arr = new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]!);
+  return window.btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function NotificationsFlow({
+  sessionToken,
+  onBack,
+  onOpenJob,
+}: {
+  sessionToken: string;
+  onBack: () => void;
+  onOpenJob: (jobId: number) => void;
+}) {
+  const notifQ = useQuery({
+    queryKey: ["notifications", sessionToken],
+    queryFn: () => api.listNotifications({ sessionToken }),
+  });
+  const items = notifQ.data?.notifications ?? [];
+  const vapidPublicKey = notifQ.data?.vapidPublicKey ?? null;
+  const [pushState, setPushState] = useState<"unknown" | "unsupported" | "ready" | "on" | "busy">("unknown");
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const supported =
+        "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!vapidPublicKey;
+      if (!supported) {
+        if (live) setPushState("unsupported");
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (live) setPushState(sub ? "on" : "ready");
+      } catch {
+        if (live) setPushState("ready");
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [vapidPublicKey]);
+
+  async function turnOnPush() {
+    if (!vapidPublicKey) return;
+    setPushState("busy");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushState("ready");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(vapidPublicKey) as BufferSource,
+      });
+      await api.savePushSubscription({
+        sessionToken,
+        endpoint: sub.endpoint,
+        p256dh: keyBytesToB64Url(sub.getKey("p256dh")),
+        auth: keyBytesToB64Url(sub.getKey("auth")),
+      });
+      setPushState("on");
+    } catch {
+      setPushState("ready");
+    }
+  }
+
+  return (
+    <Screen title="Notifications" onBack={onBack} layout="top">
+      {pushState === "ready" && (
+        <button type="button" onClick={() => void turnOnPush()} className="mb-4 w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Turn on phone notifications">
+          Turn on phone notifications
+        </button>
+      )}
+      {pushState === "busy" && (
+        <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]" role="status">Turning on...</p>
+      )}
+      {pushState === "on" && (
+        <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Phone notifications are on.</p>
+      )}
+      {notifQ.isPending ? (
+        <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">Loading...</p>
+      ) : items.length === 0 ? (
+        <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">No notifications yet.</p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {items.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              disabled={n.jobId == null}
+              onClick={() => {
+                if (n.jobId != null) onOpenJob(n.jobId);
+              }}
+              className="glass flex w-full items-center gap-3 px-5 py-4 text-left active:opacity-80 disabled:opacity-60"
+              style={{ borderRadius: 12, minHeight: 64 }}
+              aria-label={n.text}
+            >
+              {n.unread && (
+                <span className="shrink-0" style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--select)" }} aria-hidden="true" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold leading-snug text-[var(--text)]">{n.text}</span>
+                <span className="mt-0.5 block text-sm font-semibold text-[var(--dim)]">{new Date(n.createdAt).toLocaleString()}</span>
+              </span>
+              {n.jobId != null && (
+                <span style={{ color: "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </Screen>
   );
 }
@@ -3597,7 +3735,7 @@ function ProfileFlow({
    short labels: Post a job, Find work, My jobs, and the person's
    own profile row with their picture and phone number.
    ================================================================ */
-type TopScreen = "start" | "post" | "board" | "myjobs" | "job" | "rate" | "profile" | "callin";
+type TopScreen = "start" | "post" | "board" | "myjobs" | "job" | "rate" | "profile" | "callin" | "notifications";
 
 const PHONE_KEY = "jackwork_profile_phone";
 const TOKEN_KEY = "jackwork_session_token";
@@ -3613,7 +3751,7 @@ export function App() {
   });
   const [notice, setNotice] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<number | null>(null);
-  const [jobReturn, setJobReturn] = useState<"myjobs" | "board">("myjobs");
+  const [jobReturn, setJobReturn] = useState<"myjobs" | "board" | "notifications">("myjobs");
   const [rateTarget, setRateTarget] = useState<{ job: Job; side: "worker" | "customer" } | null>(null);
   const [callInReturn, setCallInReturn] = useState<"signin" | "start">("signin");
 
@@ -3686,7 +3824,7 @@ export function App() {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
   }
-  function goToJob(job: Job, from: "myjobs" | "board") {
+  function goToJob(job: Job, from: "myjobs" | "board" | "notifications") {
     setOpenJobId(job.id);
     setJobReturn(from);
     setScreen("job");
@@ -3850,6 +3988,16 @@ export function App() {
                   <PhoneIcon /> Call in
                 </button>
               </div>
+              <div className="mt-1 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => setScreen("notifications")}
+                  className="inline-flex items-center gap-2 py-2 text-base font-bold text-[var(--dim)]"
+                  aria-label="Notifications"
+                >
+                  <BellIcon /> Notifications
+                </button>
+              </div>
             </div>
             {/* Small profile corner: just a small picture and the
                 first name, NO glass box, border, or shadow — a boxed
@@ -3870,6 +4018,17 @@ export function App() {
 
         {profile && screen === "callin" && (
           <CallInScreen onBack={() => setScreen(callInReturn === "start" ? "start" : "start")} />
+        )}
+
+        {profile && screen === "notifications" && (
+          <NotificationsFlow
+            sessionToken={storedToken}
+            onBack={() => setScreen("start")}
+            onOpenJob={(jobId) => {
+              const j = jobs.find((x) => x.id === jobId);
+              if (j) goToJob(j, "notifications");
+            }}
+          />
         )}
 
         {profile && screen === "post" && (

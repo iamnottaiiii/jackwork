@@ -249,3 +249,34 @@ export const jobs = sqliteTable("jobs", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/** One notification per job event, addressed to one person. The in-app
+    list reads these; readAt is set when the person opens the list.
+    smsStatus records what happened with the text message for the same
+    event: while no SMS line is connected it stays "waiting_for_line"
+    and no text is sent. */
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  profileId: integer("profile_id").notNull(),
+  jobId: integer("job_id"),
+  kind: text("kind").notNull(),
+  text: text("text").notNull(),
+  smsStatus: text("sms_status").notNull().default("waiting_for_line"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  readAt: integer("read_at", { mode: "timestamp_ms" }),
+});
+
+/** Web Push subscriptions, one per browser or installed app where the
+    person turned phone notifications on. */
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  profileId: integer("profile_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
