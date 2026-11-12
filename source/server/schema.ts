@@ -141,6 +141,10 @@ export const profiles = sqliteTable("profiles", {
   workPreferences: text("work_preferences"),
   /** 1 once the person has answered the Find work first-visit ask, either by saving kinds of work or by choosing to see all jobs. While 0 with empty preferences, Find work asks "What job can you do?" first instead of dropping the person straight on the board. Saving preferences through the board Categories screen also sets it. */
   workPrefsAnswered: integer("work_prefs_answered").notNull().default(0),
+  /** The Terms version the person agreed to, and when. Null until
+      they pass the first-time agreement gate. */
+  termsVersion: integer("terms_version"),
+  termsAgreedAt: integer("terms_agreed_at", { mode: "timestamp_ms" }),
   verificationStatus: text("verification_status", { enum: VERIFICATION_STATUSES })
     .notNull()
     .default("unverified"),

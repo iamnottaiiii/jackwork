@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   mobile_money_number TEXT,
   work_preferences TEXT,
   work_prefs_answered INTEGER NOT NULL DEFAULT 0,
+  terms_version INTEGER,
+  terms_agreed_at INTEGER,
   verification_status TEXT NOT NULL DEFAULT 'unverified',
   offers_services INTEGER NOT NULL DEFAULT 0,
   gps_lat REAL,
@@ -165,3 +167,8 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_profile ON notifications (profile_id, id);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_profile ON push_subscriptions (profile_id);
+
+-- Terms agreement, for databases created before the gate existed.
+-- The deploy runner skips any column that is already there.
+ALTER TABLE profiles ADD COLUMN terms_version INTEGER;
+ALTER TABLE profiles ADD COLUMN terms_agreed_at INTEGER;

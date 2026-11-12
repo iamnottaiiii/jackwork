@@ -72,6 +72,8 @@ const profileShape = z.object({
   mobileMoneyNumber: z.string().nullable(),
   workPreferences: z.array(z.string()),
   workPrefsAnswered: z.boolean(),
+  termsVersion: z.number().nullable(),
+  termsAgreed: z.boolean(),
   verificationStatus: z.string(),
   offersServices: z.boolean(),
   gpsLat: z.number().nullable(),
@@ -127,6 +129,12 @@ const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
  * against it and returns no data to anyone else.
  */
 const ADMIN_PHONE = "+12297120887";
+
+/* The current Terms version. Agreeing is recorded server side
+   with this version and the time; a profile that has never
+   agreed (or agreed to an older version) gets the gate. Keep in
+   step with TERMS_VERSION in client/src/legal.ts. */
+const CURRENT_TERMS_VERSION = 1;
 
 /* Text message notifications: the sending path exists, behind
    provider config. All three stay UNSET until a real SMS line is
@@ -456,6 +464,8 @@ async function toProfile(
       }
     })(),
     workPrefsAnswered: row.workPrefsAnswered === 1,
+    termsVersion: row.termsVersion ?? null,
+    termsAgreed: row.termsAgreedAt != null && (row.termsVersion ?? 0) >= CURRENT_TERMS_VERSION,
     verificationStatus: row.verificationStatus,
     offersServices: row.offersServices === 1,
     gpsLat: row.gpsLat ?? null,
@@ -1632,6 +1642,25 @@ export const Actions = {
   }),
 
   /* ---------------- profile list (board photos and places) ---------------- */
+
+  agreeToTerms: defineAction({
+    description: "Records that the signed-in person read and agreed to the current Terms and Conditions. The version and the time are set by the server from the session token; there is no way to agree for another profile.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false, error: "Sign in again." };
+      await db
+        .update(schema.profiles)
+        .set({ termsVersion: CURRENT_TERMS_VERSION, termsAgreedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.profiles.id, actor.id));
+      ctx.invalidateQueries();
+      return { ok: true, error: null };
+    },
+  }),
 
   listNotifications: defineAction({
     description: "The signed-in person's notifications, newest first. Opening the list marks them all seen; each row keeps the unread flag it had when the list was opened, so the red dots show on that visit and are gone on the next. Also returns the Web Push public key (null when push is not set up).",

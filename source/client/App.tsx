@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fileToBase64 } from "@hatch/space-sdk/client";
 import { api, type ApiResponse } from "./api";
 import { PLACE_COMMUNITIES, PLACE_COUNTIES, PLACE_DISTRICTS, PLACE_TOWNS } from "./places";
+import { PRIVACY, TERMS, type LegalDoc } from "./legal";
 // @ts-ignore bundled Meta map control, no type declarations ship with it
 import "./hatch-maps.js";
 import "./hatch-maps.css";
@@ -1707,6 +1708,7 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
   const [profileExists, setProfileExists] = useState(true);
   const [newProfileId, setNewProfileId] = useState<number | null>(null);
   const [pendingToken, setPendingToken] = useState("");
+  const [gateDone, setGateDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1735,6 +1737,21 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
       return;
     }
     onDone(phone.trim(), res.sessionToken ?? "");
+  }
+
+  if (newProfileId != null && !gateDone) {
+    /* First-time gate: a new person reads and agrees to the
+       Terms and Conditions before picking their place. The
+       agreement is recorded on the server against their new
+       profile; no agree, no account. */
+    return (
+      <TermsGateFlow
+        onAgreed={async () => {
+          await api.agreeToTerms({ sessionToken: pendingToken });
+          setGateDone(true);
+        }}
+      />
+    );
   }
 
   if (newProfileId != null) {
@@ -1818,6 +1835,105 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
       <button type="button" disabled={busy} onClick={sendCode} className="mt-2 w-full py-3 text-center text-base font-bold text-[var(--dim)]" aria-label="Send a new code">
         Send a new code
       </button>
+    </Screen>
+  );
+}
+
+/* ================================================================
+   TERMS AND PRIVACY — the two documents, in legal.ts. Every
+   reading screen is two layers: the numbered main points first,
+   then a divider, then the full sections. The gate form adds an
+   I agree button at the bottom of the Terms; the Profile form
+   is read only.
+   ================================================================ */
+function LegalScreen({
+  doc,
+  onBack,
+  onAgree,
+  agreeBusy,
+}: {
+  doc: LegalDoc;
+  onBack: () => void;
+  onAgree?: () => void;
+  agreeBusy?: boolean;
+}) {
+  return (
+    <Screen title={doc.title} onBack={onBack} layout="top">
+      <p className="text-center text-sm font-semibold text-[var(--dim)]">Version {doc.version}, {doc.date}</p>
+      <div className="mt-5 flex flex-col gap-3">
+        {doc.points.map((point, i) => (
+          <p key={i} className="text-base font-semibold leading-snug text-[var(--text)]">
+            {i + 1}. {point}
+          </p>
+        ))}
+      </div>
+      <div className="my-6 border-t border-[var(--border)]" aria-hidden="true" />
+      <div className="flex flex-col gap-6">
+        {doc.sections.map((section) => (
+          <div key={section.heading}>
+            <h2 className="text-lg font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{section.heading}</h2>
+            <div className="mt-2 flex flex-col gap-2">
+              {section.body.map((para, i) => (
+                <p key={i} className="text-base font-medium leading-relaxed text-[var(--text)]">{para}</p>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {onAgree && (
+        <button type="button" disabled={agreeBusy} onClick={onAgree} className="mt-8 w-full py-4 text-xl font-black disabled:opacity-50" style={primaryBtnStyle} aria-label="I agree to the Terms and Conditions">
+          {agreeBusy ? "Saving..." : "I agree"}
+        </button>
+      )}
+    </Screen>
+  );
+}
+
+/* The first-time gate: before a person can open their account,
+   they must open the Terms and Conditions and agree. No agree,
+   no entry, and there is no skip. The agreement is recorded on
+   the server (agreeToTerms) before onAgreed lets them continue. */
+function TermsGateFlow({
+  onAgreed,
+  onSignOut,
+}: {
+  onAgreed: () => Promise<void>;
+  onSignOut?: () => void;
+}) {
+  const [view, setView] = useState<"gate" | "terms" | "privacy">("gate");
+  const [busy, setBusy] = useState(false);
+
+  if (view === "terms") {
+    return (
+      <LegalScreen
+        doc={TERMS}
+        onBack={() => setView("gate")}
+        agreeBusy={busy}
+        onAgree={async () => {
+          setBusy(true);
+          await onAgreed();
+          setBusy(false);
+        }}
+      />
+    );
+  }
+  if (view === "privacy") {
+    return <LegalScreen doc={PRIVACY} onBack={() => setView("gate")} />;
+  }
+  return (
+    <Screen title="Terms and Conditions">
+      <p className="text-center text-lg font-bold leading-snug text-[var(--text)]">
+        You must read and agree to the Terms and Conditions to open your account.
+      </p>
+      <div className="mt-6 flex flex-col gap-3">
+        <PickRow label="Terms and Conditions" onClick={() => setView("terms")} ariaLabel="Read the Terms and Conditions" />
+        <PickRow label="Privacy Policy" onClick={() => setView("privacy")} ariaLabel="Read the Privacy Policy" />
+      </div>
+      {onSignOut && (
+        <button type="button" onClick={onSignOut} className="mt-6 w-full py-3 text-center text-base font-bold text-[var(--dim)]" aria-label="Sign out on this device">
+          Sign out
+        </button>
+      )}
     </Screen>
   );
 }
@@ -3463,7 +3579,7 @@ function ProfileFlow({
   onSignOut: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [part, setPart] = useState<"menu" | "photo" | "place" | "id" | "money">("menu");
+  const [part, setPart] = useState<"menu" | "photo" | "place" | "id" | "money" | "terms" | "privacy">("menu");
   // mobile money
   const [mmInput, setMmInput] = useState<string | null>(null);
   const [mmBusy, setMmBusy] = useState(false);
@@ -3595,12 +3711,34 @@ function ProfileFlow({
             onClick={() => setPart("id")}
             ariaLabel="My ID and verification"
           />
+          <BigChoice
+            title="Terms of Service"
+            sub="What you agree to"
+            icon={<CheckIcon />}
+            onClick={() => setPart("terms")}
+            ariaLabel="Read the Terms of Service"
+          />
+          <BigChoice
+            title="Privacy Policy"
+            sub="What we keep and who sees it"
+            icon={<ShieldIcon />}
+            onClick={() => setPart("privacy")}
+            ariaLabel="Read the Privacy Policy"
+          />
         </div>
         <button type="button" onClick={onSignOut} className="mt-6 w-full py-3 text-center text-base font-bold text-[var(--dim)]" aria-label="Sign out on this device">
           Sign out
         </button>
       </Screen>
     );
+  }
+
+  if (part === "terms") {
+    return <LegalScreen doc={TERMS} onBack={() => setPart("menu")} />;
+  }
+
+  if (part === "privacy") {
+    return <LegalScreen doc={PRIVACY} onBack={() => setPart("menu")} />;
   }
 
   if (part === "photo") {
@@ -3761,7 +3899,13 @@ export function App() {
     enabled: digits(storedPhone).length >= 6 && storedToken.length >= 10,
   });
 
-  const profile: MyProfile | null = profileQ.data?.profile ?? null;
+  const rawProfile: MyProfile | null = profileQ.data?.profile ?? null;
+  /* First-time gate at the account level: a profile that has
+     never agreed to the Terms sees only the gate, whichever
+     screen it was headed for. Agreeing is recorded on the
+     server, and the profile then reads back as agreed. */
+  const gateBlocked = !!rawProfile && !rawProfile.termsAgreed;
+  const profile: MyProfile | null = gateBlocked ? null : rawProfile;
 
   const jobsQ = useQuery({
     queryKey: ["jobs", storedToken],
@@ -3918,14 +4062,24 @@ export function App() {
         )}
 
         {/* Signed out: sign-in screens, or the call-in screen. */}
-        {!signedIn && !loadingProfile && screen !== "callin" && (
+        {!signedIn && !loadingProfile && !gateBlocked && screen !== "callin" && (
           <SignInFlow
             onDone={(phone, token) => { rememberPhone(phone, token); setScreen("start"); flash("You are signed in."); }}
             onCallIn={() => { setCallInReturn("signin"); setScreen("callin"); }}
           />
         )}
-        {!signedIn && !loadingProfile && screen === "callin" && (
+        {!signedIn && !loadingProfile && !gateBlocked && screen === "callin" && (
           <CallInScreen onBack={() => setScreen("start")} />
+        )}
+
+        {gateBlocked && rawProfile && (
+          <TermsGateFlow
+            onAgreed={async () => {
+              await api.agreeToTerms({ sessionToken: storedToken });
+              await queryClient.invalidateQueries();
+            }}
+            onSignOut={forgetPhone}
+          />
         )}
 
         {/* Signed in but no home place yet: pick it once. */}
