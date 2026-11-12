@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794446745651,
+      "tag": "0001_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794446745651,
+      "tag": "0002_jackwork_marketplace_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794446745651,
+      "tag": "0003_unified_verified_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794447223024,
+      "tag": "0004_signin_codes_and_job_gps_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794447223024,
+      "tag": "0005_pay_method_two_way_ratings_profile_gps",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794451477796,
+      "tag": "0006_profile_photo_home_location_job_contact",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794451477796,
+      "tag": "0007_mobile_money_and_work_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794454101035,
+      "tag": "0008_add_scheduled_day_and_time_to_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794454101035,
+      "tag": "0009_add_community_to_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794454388072,
+      "tag": "0010_add_house_directions_to_profiles_and_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794455221907,
+      "tag": "0011_place_coordinates_from_real_place_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794456316063,
+      "tag": "0012_add_session_token_to_profiles",
+      "breakpoints": true
+    }
+  ]
+}

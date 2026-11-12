@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&display=swap');
+@import "tailwindcss";
+@import "tailwindcss-safe-area";
+
+@theme {
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 36px;
+  --text-4xl: 36px;
+  --text-4xl--line-height: 40px;
+  --text-5xl: 48px;
+  --text-5xl--line-height: 52px;
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, sans-serif;
+}
+
+/* Jackwork is black and white only, plus ONE red family used in
+   two places: the selection highlight and the background design
+   gradient. Whatever a person has picked (a calendar day, an
+   answer, a category, AM or PM) fills with a smooth, soothing
+   deep red instead of white or light, with white text on top and
+   a soft red glow around it. The same red, washed way down, is
+   the soft gradient glow behind everything on every screen.
+   Everything else stays black and white.
+   Light mode: white background, black text.
+   Dark mode: black background, white text. Follows the device setting.
+   --accent and --yellow are the primary action color: black in light
+   mode, white in dark mode, always with the opposite ink on top. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface2: #f4f4f4;
+  --text: #000000;
+  --dim: #595959;
+  --border: #e4e4e4;
+  --accent: #000000;
+  --accent-ink: #ffffff;
+  --yellow: #000000;
+  --yellow-ink: #ffffff;
+  --danger: #000000;
+  /* Selection highlight: soft deep red, gentler on white so it
+     stays easy on the eyes; white text always sits on it. */
+  --select: #b4453c;
+  --select-ink: #ffffff;
+  /* The JackWork wordmark red: the logo's glow red as text. Same
+     deep red family as the selection highlight on light; on dark
+     the text-safe warmer variant below keeps it readable. */
+  --brand: #b4453c;
+  --select-glow: 0 6px 22px rgb(180 69 60 / 32%);
+  /* Background design gradient stops: the same smoothing red
+     family as the selection highlight, as PLAIN rgb-with-alpha
+     colors. They must never go back to color-mix(): engines that
+     do not support color-mix drop the whole background
+     declaration, which is exactly how light mode lost its red on
+     a real phone while the audit browser (which supports it)
+     kept showing a wash. The light stops are strong — washed
+     over white, anything much under half strength reads as plain
+     white on a phone screen — while black text stays fully
+     readable on top. The body::before washes below and the App
+     root background use these stops and nothing else. */
+  --glow-1: rgb(180 69 60 / 55%);
+  --glow-2: rgb(180 69 60 / 44%);
+  --glow-3: rgb(180 69 60 / 32%);
+  --glow-4: rgb(180 69 60 / 26%);
+  --hero-dim: color-mix(in srgb, var(--bg) 68%, var(--text));
+  --radius: 14px;
+  /* Liquid glass: clearly see-through fills with a soft blur over the
+     page washes, so a person can SEE that it is transparent. */
+  --glass: color-mix(in srgb, var(--surface) 32%, transparent);
+  --glass-strong: color-mix(in srgb, var(--surface) 46%, transparent);
+  --glass-border: color-mix(in srgb, var(--text) 20%, transparent);
+  --glass-shadow: 0 10px 34px color-mix(in srgb, var(--text) 9%, transparent);
+  --space-surface: var(--surface);
+  --space-surface-alt: var(--surface2);
+  --space-muted: var(--dim);
+  --space-border: var(--border);
+  --space-accent: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #0c0c0c;
+    --surface2: #1b1b1b;
+    --text: #ffffff;
+    --dim: #a8a8a8;
+    --border: #2b2b2b;
+    --accent: #ffffff;
+    --accent-ink: #000000;
+    --yellow: #ffffff;
+    --yellow-ink: #000000;
+    --danger: #ffffff;
+    /* Selection highlight on black: a deeper, calmer red so it
+       reads as a soft glow, never bright fire red. */
+    --select: #8e2f2a;
+    --select-glow: 0 6px 26px rgb(142 47 42 / 55%);
+    /* Wordmark red on black: the same family lifted to a warm,
+       readable red (the deep selection red is too dark as text
+       on black). */
+    --brand: #df7268;
+    /* Background design gradient on black: deep soft red tones
+       washing gently through the black, calm and smooth, never
+       bright or fire red. Same plain rgb-with-alpha stops as
+       light mode (these are the exact colors the old color-mix
+       values produced, so dark mode renders unchanged). */
+    --glow-1: rgb(142 47 42 / 42%);
+    --glow-2: rgb(142 47 42 / 32%);
+    --glow-3: rgb(142 47 42 / 22%);
+    --glow-4: rgb(142 47 42 / 19%);
+    --glass: color-mix(in srgb, var(--surface2) 30%, transparent);
+    --glass-strong: color-mix(in srgb, var(--surface2) 44%, transparent);
+    --glass-shadow: 0 10px 34px rgb(0 0 0 / 55%);
+  }
+}
+
+@layer base {
+  button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) {
+    min-height: 2.25rem;
+  }
+  html, body { height: 100%; }
+  body { font-family: var(--font-body); background: var(--bg); }
+  /* Soft red washes behind everything — the background design
+     gradient — so the translucent glass fills have something to
+     blur and read as real glass. Same smoothing red family as the
+     selection highlight: deep and calm on black, and clearly red
+     (not washed-out white) on white too. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(65% 42% at 12% 6%, var(--glow-1), transparent 70%),
+      radial-gradient(55% 38% at 88% 88%, var(--glow-2), transparent 70%),
+      radial-gradient(40% 30% at 78% 22%, var(--glow-3), transparent 70%),
+      radial-gradient(45% 32% at 22% 82%, var(--glow-4), transparent 70%);
+  }
+  .font-display { font-family: var(--font-display); }
+}
+
+/* The JackWork wordmark lives IN the background, the same way the
+   red glow does — it is not print sitting on top of the screen.
+   Partial strength, blended into the background washes (multiply
+   sinks the red into white, screen lifts it into black), with the
+   letter edges softened by a slight blur and a same-red halo, so
+   there is no hard sticker edge anywhere. The word stays readable
+   at a glance but never competes with the screen's real content;
+   its z-0 background-layer stacking is set where it renders. */
+.brand-mark-behind {
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  filter: blur(0.6px);
+  text-shadow: 0 0 14px rgb(180 69 60 / 45%);
+}
+@media (prefers-color-scheme: dark) {
+  .brand-mark-behind {
+    opacity: 0.62;
+    mix-blend-mode: screen;
+    text-shadow: 0 0 16px rgb(142 47 42 / 65%);
+  }
+}
+
+@layer components {
+  /* Liquid-glass surfaces: rounded, translucent, softly lifted. */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: var(--radius);
+  }
+  .glass-strong {
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(26px) saturate(1.5);
+    backdrop-filter: blur(26px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: var(--radius);
+  }
+  /* Field: normal size, natural height, straight edges. The box stays
+     small; the text inside stays big and clear. */
+  .field {
+    width: 100%;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+    border: 1.5px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.45rem 0.85rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text);
+  }
+  .field::placeholder { color: var(--dim); font-weight: 500; }
+  .field:focus { outline: 2.5px solid var(--text); outline-offset: 1px; }
+  textarea.field { border-radius: 10px; padding: 0.6rem 0.85rem; }
+  /* On a centered one-question screen, the words inside the field sit
+     in the middle too. */
+  .center-screen .field { text-align: center; }
+}
