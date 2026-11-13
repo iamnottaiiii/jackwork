@@ -73,6 +73,7 @@ const profileShape = z.object({
   workPreferences: z.array(z.string()),
   workPrefsAnswered: z.boolean(),
   termsVersion: z.number().nullable(),
+  termsRole: z.string().nullable(),
   termsAgreed: z.boolean(),
   verificationStatus: z.string(),
   offersServices: z.boolean(),
@@ -130,11 +131,15 @@ const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
  */
 const ADMIN_PHONE = "+12297120887";
 
-/* The current Terms version. Agreeing is recorded server side
-   with this version and the time; a profile that has never
-   agreed (or agreed to an older version) gets the gate. Keep in
-   step with TERMS_VERSION in client/src/legal.ts. */
-const CURRENT_TERMS_VERSION = 1;
+/* The current Terms version. There are two sets at this
+   version, Worker Terms and User Terms; agreeing is recorded
+   server side with this version, the set the person picked
+   (termsRole), and the time. A profile that has never agreed
+   gets the gate. A profile that agreed to version 1 (the first
+   combined terms) stays agreed: the split into two sets does
+   not trap existing people at the gate. Keep in step with
+   TERMS_VERSION in client/src/legal.ts. */
+const CURRENT_TERMS_VERSION = 2;
 
 /* Text message notifications: the sending path exists, behind
    provider config. All three stay UNSET until a real SMS line is
@@ -480,7 +485,8 @@ async function toProfile(
     })(),
     workPrefsAnswered: row.workPrefsAnswered === 1,
     termsVersion: row.termsVersion ?? null,
-    termsAgreed: row.termsAgreedAt != null && (row.termsVersion ?? 0) >= CURRENT_TERMS_VERSION,
+    termsRole: row.termsRole ?? null,
+    termsAgreed: row.termsAgreedAt != null && (row.termsVersion ?? 0) >= 1,
     verificationStatus: row.verificationStatus,
     offersServices: row.offersServices === 1,
     gpsLat: row.gpsLat ?? null,
@@ -1659,9 +1665,10 @@ export const Actions = {
   /* ---------------- profile list (board photos and places) ---------------- */
 
   agreeToTerms: defineAction({
-    description: "Records that the signed-in person read and agreed to the current Terms and Conditions. The version and the time are set by the server from the session token; there is no way to agree for another profile.",
+    description: "Records that the signed-in person read and agreed to one of the two current Terms sets, the Worker Terms or the User Terms they picked at create account. The version and the time are set by the server from the session token; there is no way to agree for another profile.",
     request: z.object({
       sessionToken: z.string().min(10).max(300),
+      role: z.enum(["worker", "user"]),
     }),
     response: z.object({ ok: z.boolean(), error: z.string().nullable() }),
     async handler(ctx, args) {
@@ -1670,7 +1677,7 @@ export const Actions = {
       if (!actor) return { ok: false, error: "Sign in again." };
       await db
         .update(schema.profiles)
-        .set({ termsVersion: CURRENT_TERMS_VERSION, termsAgreedAt: new Date(), updatedAt: new Date() })
+        .set({ termsVersion: CURRENT_TERMS_VERSION, termsRole: args.role, termsAgreedAt: new Date(), updatedAt: new Date() })
         .where(eq(schema.profiles.id, actor.id));
       ctx.invalidateQueries();
       return { ok: true, error: null };

@@ -92,10 +92,14 @@ const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
 
 const ADMIN_PHONE = "+12297120887";
 
-/* The current Terms version. Agreeing is recorded server side
-   with this version and the time; a profile that has never
-   agreed (or agreed to an older version) gets the gate. */
-const CURRENT_TERMS_VERSION = 1;
+/* The current Terms version. There are two sets at this
+   version, Worker Terms and User Terms; agreeing is recorded
+   server side with this version, the set the person picked
+   (terms_role), and the time. A profile that has never agreed
+   gets the gate. A profile that agreed to version 1 (the first
+   combined terms) stays agreed, so existing people are never
+   trapped at the gate by the split into two sets. */
+const CURRENT_TERMS_VERSION = 2;
 
 /* Text message notifications: the sending path exists, behind
    provider config. All three stay UNSET until a real SMS line is
@@ -457,7 +461,8 @@ function toProfile(row) {
     workPreferences,
     workPrefsAnswered: row.work_prefs_answered === 1,
     termsVersion: row.terms_version ?? null,
-    termsAgreed: row.terms_agreed_at != null && (row.terms_version ?? 0) >= CURRENT_TERMS_VERSION,
+    termsRole: row.terms_role ?? null,
+    termsAgreed: row.terms_agreed_at != null && (row.terms_version ?? 0) >= 1,
     verificationStatus: row.verification_status,
     offersServices: row.offers_services === 1,
     gpsLat: row.gps_lat ?? null,
@@ -1298,12 +1303,13 @@ const Actions = {
 
   async agreeToTerms(env, args) {
     const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    if (args.role !== "worker" && args.role !== "user") throw bad("Pick Worker or User.");
     const actor = await actorForToken(env, sessionToken);
     if (!actor) return { ok: false, error: "Sign in again." };
     await runSql(
       env,
-      "UPDATE profiles SET terms_version = ?, terms_agreed_at = ?, updated_at = ? WHERE id = ?",
-      [CURRENT_TERMS_VERSION, Date.now(), Date.now(), actor.id],
+      "UPDATE profiles SET terms_version = ?, terms_role = ?, terms_agreed_at = ?, updated_at = ? WHERE id = ?",
+      [CURRENT_TERMS_VERSION, args.role, Date.now(), Date.now(), actor.id],
     );
     return { ok: true, error: null };
   },

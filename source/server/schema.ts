@@ -145,6 +145,13 @@ export const profiles = sqliteTable("profiles", {
       they pass the first-time agreement gate. */
   termsVersion: integer("terms_version"),
   termsAgreedAt: integer("terms_agreed_at", { mode: "timestamp_ms" }),
+  /** Which Terms set the person agreed to at create account:
+      "worker" for the Worker Terms or "user" for the User Terms.
+      Null for profiles that agreed to the first combined terms
+      (version 1) before the two sets existed. The pick decides
+      only which terms they agreed to; one profile can still
+      both post jobs and take jobs. */
+  termsRole: text("terms_role"),
   verificationStatus: text("verification_status", { enum: VERIFICATION_STATUSES })
     .notNull()
     .default("unverified"),

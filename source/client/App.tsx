@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fileToBase64 } from "@hatch/space-sdk/client";
 import { api, type ApiResponse } from "./api";
 import { PLACE_COMMUNITIES, PLACE_COUNTIES, PLACE_DISTRICTS, PLACE_TOWNS } from "./places";
-import { PRIVACY, TERMS, type LegalDoc } from "./legal";
+import { PRIVACY, USER_TERMS, WORKER_TERMS, type LegalDoc, type TermsRole } from "./legal";
 // @ts-ignore bundled Meta map control, no type declarations ship with it
 import "./hatch-maps.js";
 import "./hatch-maps.css";
@@ -1305,23 +1305,25 @@ function JobFacts({ job, profile, customerPhotoUrl, workerPhotoUrl, showHouse, p
   );
 }
 
-/* ---------- pick a place: one search, type your place ----------
-   The address at sign-up is found on ONE search screen: the
-   person types their place and real places from places.ts come
-   up as they type, counties, districts, towns and communities
-   together. (The stepped lists, county then district then town
-   then community, came first; the owner's mother asked for
-   typing instead of the long lists, and the owner ordered this
-   on 2026-11-12.) Matching is forgiving on purpose: results
-   start from two letters, the spelling does not have to be
-   right, and names are matched by how they sound too, because a
-   person may spell a hard name the way it is pronounced. What
-   is saved is always the full real record the person tapped,
-   with its coordinates; the typed words are never saved as a
-   place. A county or district result narrows this same screen
-   to the places inside it, because a saved place still needs
-   its town. Then the one short house description. Used at
-   sign-up and in Profile. */
+/* ---------- pick a place: step by step, search at each step ----------
+   The address at sign-up is picked in steps, one screen per
+   level, with a search box at each level that searches only
+   that level: first the county, then the district in that
+   county, then the city or town in that district, then the
+   community in that town, only when the town has communities.
+   Tapping a pick moves straight to the next screen; a pick
+   never lands back on the same level. (One single search over
+   every level together was tried on 2026-11-12 and the owner
+   found it looped him back onto the county pick, so the steps
+   came back the same day, with the forgiving search kept
+   inside each level.) Matching is forgiving on purpose:
+   results start from two letters, the spelling does not have
+   to be right, and names are matched by how they sound too,
+   because a person may spell a hard name the way it is
+   pronounced. What is saved is always the full real record
+   the person tapped, with its coordinates; typed words are
+   never saved as a place. Then the one short house
+   description. Used at sign-up and in Profile. */
 export type PickedPlace = { county: string; district: string; city: string; community: string | null; house: string; lat: number | null; lng: number | null };
 
 /* One pickable place: a real record from places.ts. A town pick
@@ -1397,77 +1399,6 @@ function placeSoundKey(word: string): string {
   return key.padEnd(4, "0");
 }
 
-/* One searchable thing: a town or community (a saveable place),
-   or a county or district (an area result, which narrows the
-   screen to the places inside it). The words of the name itself
-   and the words of the rest of its path are precomputed once,
-   with their sound keys, so typing stays fast. */
-type PlaceSearchItem = {
-  label: string;
-  sub: string;
-  aria: string;
-  entry: PlaceEntry | null;
-  isArea: boolean;
-  areaCounty: string;
-  areaDistrict: string | null;
-  words: string[];
-  phonWords: string[];
-  pathWords: string[];
-  phonPathWords: string[];
-  squash: string;
-  sqPhon: string;
-};
-
-function makePlaceSearchItem(
-  label: string,
-  sub: string,
-  aria: string,
-  entry: PlaceEntry | null,
-  isArea: boolean,
-  areaCounty: string,
-  areaDistrict: string | null,
-  pathText: string,
-): PlaceSearchItem {
-  const words = norm(label).split(" ").filter(Boolean);
-  const pathWords = norm(pathText).split(" ").filter(Boolean);
-  const squash = squashPlaceName(label);
-  return {
-    label,
-    sub,
-    aria,
-    entry,
-    isArea,
-    areaCounty,
-    areaDistrict,
-    words,
-    phonWords: words.map(placeSoundKey),
-    pathWords,
-    phonPathWords: pathWords.map(placeSoundKey),
-    squash,
-    sqPhon: placeSoundKey(squash),
-  };
-}
-
-const PLACE_SEARCH_INDEX: PlaceSearchItem[] = [];
-for (const c of PLACE_COUNTIES) {
-  PLACE_SEARCH_INDEX.push(makePlaceSearchItem(c, "County", `Pick ${c} county`, null, true, c, null, ""));
-}
-for (const d of PLACE_DISTRICTS) {
-  const c = PLACE_COUNTIES[d[0]]!;
-  PLACE_SEARCH_INDEX.push(makePlaceSearchItem(d[1], `District, ${c}`, `Pick ${d[1]} district, ${c}`, null, true, c, d[1], c));
-}
-for (const e of PLACE_ENTRIES) {
-  if (e.community) {
-    PLACE_SEARCH_INDEX.push(
-      makePlaceSearchItem(e.community, `${e.city}, ${e.county}`, `Pick ${e.community}, ${e.city}, ${e.county}`, e, false, e.county, e.district, `${e.city} ${e.district} ${e.county}`),
-    );
-  } else {
-    PLACE_SEARCH_INDEX.push(
-      makePlaceSearchItem(e.city, `${e.district}, ${e.county}`, `Pick ${e.city}, ${e.district}, ${e.county}`, e, false, e.county, e.district, `${e.district} ${e.county}`),
-    );
-  }
-}
-
 /* How well one typed word matches one real word. Lower is
    better, -1 is no match: exact first, then a word that starts
    with the typed letters (so two letters are enough), then the
@@ -1485,42 +1416,41 @@ function placeWordScore(q: string, qPhon: string, word: string, phon: string): n
   return -1;
 }
 
-/* Search the whole place data at once. Results start at two
-   letters typed. Whole-name matches (exact, starting with, or
-   sounding the same) come before word by word matches, and
-   matches on the name itself come before matches that only hit
-   the path around it. Best matches first, capped short. */
-function searchPlaces(query: string, area: { county: string; district: string | null } | null): PlaceSearchItem[] {
+/* Search ONE level of place names: the counties, or the
+   districts of one county, or the towns of one district, or
+   the communities of one town. The stepped picker calls this
+   with only the current level's names, so a county search can
+   never return a town and a pick can never land on the wrong
+   level. Results start at two letters typed. Whole-name
+   matches (exact, starting with, or sounding the same) come
+   before word by word matches; at the same score the name
+   closest to what was typed comes first, because sound keys
+   collide and closeness keeps the real place ahead of a short
+   name that merely sounds similar. Best matches first,
+   capped short. */
+function searchPlaceNames(names: string[], query: string): string[] {
   const sq = squashPlaceName(query);
   if (sq.length < 2) return [];
   const tokens = norm(query).split(" ").filter(Boolean);
   const sqPhon = placeSoundKey(sq);
-  const scored: { item: PlaceSearchItem; score: number }[] = [];
-  for (const item of PLACE_SEARCH_INDEX) {
-    if (area) {
-      if (item.isArea) continue;
-      if (item.areaCounty !== area.county) continue;
-      if (area.district && item.areaDistrict !== area.district) continue;
-    }
+  const scored: { name: string; score: number }[] = [];
+  for (const name of names) {
+    const words = norm(name).split(" ").filter(Boolean);
+    const phonWords = words.map(placeSoundKey);
+    const nameSquash = squashPlaceName(name);
     let score: number | null = null;
-    if (item.squash === sq) score = 0;
-    else if (item.squash.startsWith(sq)) score = 1;
-    else if (item.sqPhon !== "" && item.sqPhon === sqPhon) score = 2;
+    if (nameSquash === sq) score = 0;
+    else if (nameSquash.startsWith(sq)) score = 1;
+    else if (placeSoundKey(nameSquash) !== "" && placeSoundKey(nameSquash) === sqPhon) score = 2;
     if (score === null && tokens.length > 0) {
       let total = 0;
       let ok = true;
       for (const t of tokens) {
         const tPhon = placeSoundKey(t);
         let best = -1;
-        for (let i = 0; i < item.words.length; i++) {
-          const s = placeWordScore(t, tPhon, item.words[i]!, item.phonWords[i]!);
+        for (let i = 0; i < words.length; i++) {
+          const s = placeWordScore(t, tPhon, words[i]!, phonWords[i]!);
           if (s >= 0 && (best < 0 || s < best)) best = s;
-        }
-        if (best < 0) {
-          for (let i = 0; i < item.pathWords.length; i++) {
-            const s = placeWordScore(t, tPhon, item.pathWords[i]!, item.phonPathWords[i]!);
-            if (s >= 0 && (best < 0 || s + 5 < best)) best = s + 5;
-          }
         }
         if (best < 0) {
           ok = false;
@@ -1530,24 +1460,17 @@ function searchPlaces(query: string, area: { county: string; district: string | 
       }
       if (ok) score = 10 + total;
     }
-    if (score !== null) scored.push({ item, score });
+    if (score !== null) scored.push({ name, score });
   }
-  /* At the same score, a county or district comes before the
-     places inside it, and the name closest to what was typed
-     comes first: sound keys collide (many short names sound
-     alike), so closeness keeps the real place ahead of a short
-     name that merely sounds similar. */
-  const ranked = scored.map((s) => ({ ...s, dist: editDistance(sq, s.item.squash) }));
+  const ranked = scored.map((s) => ({ ...s, dist: editDistance(sq, squashPlaceName(s.name)) }));
   ranked.sort(
     (a, b) =>
       a.score - b.score ||
-      (a.item.isArea === b.item.isArea ? 0 : a.item.isArea ? -1 : 1) ||
       a.dist - b.dist ||
-      a.item.label.length - b.item.label.length ||
-      a.item.label.localeCompare(b.item.label) ||
-      a.item.sub.localeCompare(b.item.sub),
+      a.name.length - b.name.length ||
+      a.name.localeCompare(b.name),
   );
-  return ranked.slice(0, 12).map((s) => s.item);
+  return ranked.slice(0, 12).map((s) => s.name);
 }
 /* PLACE-SEARCH-END */
 
@@ -1591,28 +1514,108 @@ function PlacePicker({
   onDone: (place: PickedPlace) => void;
   onBack: () => void;
 }) {
-  const [stage, setStage] = useState<"search" | "house">("search");
+  type Stage = "county" | "district" | "town" | "community" | "house";
+  const [stage, setStage] = useState<Stage>("county");
   const [query, setQuery] = useState("");
-  const [area, setArea] = useState<{ county: string; district: string | null; label: string; sub: string } | null>(null);
+  const [county, setCounty] = useState<string | null>(null);
+  const [district, setDistrict] = useState<string | null>(null);
+  const [townEntry, setTownEntry] = useState<PlaceEntry | null>(null);
   const [picked, setPicked] = useState<PlaceEntry | null>(null);
   const [house, setHouse] = useState(initial?.house ?? "");
 
   const finish = (e: PlaceEntry, houseText: string) =>
     onDone({ county: e.county, district: e.district, city: e.city, community: e.community, house: houseText, lat: e.lat, lng: e.lng });
   const placeWords = picked ? (picked.community ? `${picked.community}, ${picked.city}` : `${picked.city}, ${picked.county}`) : "";
-  const results = useMemo(() => searchPlaces(query, area), [query, area]);
-  const noMatch = (
-    <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">Nothing matches that search.</p>
+
+  /* The names at each level, from the real place data only.
+     Counties: the 15, in ABC order with Montserrado pinned at
+     the top. Districts: only the picked county's. Towns: only
+     the picked district's, from its real town records.
+     Communities: only the picked town's. */
+  const countyNames = useMemo(
+    () => ["Montserrado", ...PLACE_COUNTIES.filter((c) => c !== "Montserrado")],
+    [],
   );
+  const districtNames = useMemo(
+    () => (county ? PLACE_DISTRICTS.filter((d) => PLACE_COUNTIES[d[0]] === county).map((d) => d[1]) : []),
+    [county],
+  );
+  const townEntries = useMemo(
+    () =>
+      county && district
+        ? PLACE_ENTRIES.filter((e) => e.county === county && e.district === district && !e.community)
+        : [],
+    [county, district],
+  );
+  const communityEntries = useMemo(
+    () =>
+      townEntry
+        ? PLACE_ENTRIES.filter(
+            (e) => e.county === townEntry.county && e.district === townEntry.district && e.city === townEntry.city && !!e.community,
+          )
+        : [],
+    [townEntry],
+  );
+
+  const searching = squashPlaceName(query).length >= 2;
+  const levelNames: string[] =
+    stage === "county"
+      ? countyNames
+      : stage === "district"
+        ? districtNames
+        : stage === "town"
+          ? townEntries.map((e) => e.city)
+          : communityEntries.map((e) => e.community!);
+  const visibleNames = searching ? searchPlaceNames(levelNames, query) : levelNames;
+
+  const goStage = (next: Stage) => {
+    setQuery("");
+    setStage(next);
+  };
+
+  const pickCounty = (name: string) => {
+    setCounty(name);
+    setDistrict(null);
+    setTownEntry(null);
+    setPicked(null);
+    goStage("district");
+  };
+  const pickDistrict = (name: string) => {
+    setDistrict(name);
+    setTownEntry(null);
+    setPicked(null);
+    goStage("town");
+  };
+  const pickTown = (name: string) => {
+    const entry = townEntries.find((e) => e.city === name);
+    if (!entry) return;
+    const hasCommunities = PLACE_ENTRIES.some(
+      (e) => e.county === entry.county && e.district === entry.district && e.city === entry.city && !!e.community,
+    );
+    if (hasCommunities) {
+      setTownEntry(entry);
+      goStage("community");
+    } else {
+      /* A town with no communities is finished at the town
+         pick: straight to the house description. */
+      setPicked(entry);
+      goStage("house");
+    }
+  };
+  const pickCommunity = (name: string) => {
+    const entry = communityEntries.find((e) => e.community === name);
+    if (!entry) return;
+    setPicked(entry);
+    goStage("house");
+  };
 
   if (stage === "house" && picked) {
     /* The ONLY person-specific part: how to get to your own house,
        in your own words, written once and kept with your place.
        Not an address form, not a map, not a pin. Jobs carry it from
-       the profile automatically; the worker sees it on the job
-       together with the call number. */
+       the profile automatically; the worker sees it on the job. */
     return (
-      <Screen title="How do we get to your house?" onBack={() => setStage("search")}>
+      <Screen title="How do we get to your house?" onBack={() => goStage(picked.community ? "community" : "town")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1633,54 +1636,57 @@ function PlacePicker({
     );
   }
 
-  /* One search screen: type your place, and real places come up
-     as you type, starting from two letters, with bad spelling
-     and spelling by sound forgiven. Tapping a town or community
-     picks that real record. Tapping a county or district keeps
-     this same screen and narrows it to the places inside, shown
-     as the picked row on top; tapping that row clears it. */
+  /* One screen per level. Each level's search searches only
+     that level's names, and tapping a name moves straight to
+     the next level: county to district, district to town,
+     town to community (only when the town has communities,
+     otherwise the town pick finishes the place), community to
+     the house description. Nothing here can land back on the
+     level just picked. */
+  const stageTitle =
+    stage === "county"
+      ? "What county are you in?"
+      : stage === "district"
+        ? "What district are you in?"
+        : stage === "town"
+          ? "What city or town are you in?"
+          : "What community are you in?";
+  const stageBack =
+    stage === "county"
+      ? onBack
+      : stage === "district"
+        ? () => goStage("county")
+        : stage === "town"
+          ? () => goStage("district")
+          : () => goStage("town");
+  const pickName = stage === "county" ? pickCounty : stage === "district" ? pickDistrict : stage === "town" ? pickTown : pickCommunity;
+
   return (
-    <Screen title="Where do you live?" onBack={onBack} layout="top">
-      {initial?.city && (
+    <Screen title={stageTitle} onBack={stageBack} layout="top">
+      {stage === "county" && initial?.city && (
         <p className="mb-3 text-center text-base font-semibold text-[var(--dim)]">Now: {initial.community ? `${initial.community}, ` : ""}{initial.city ?? ""}, {initial.county ?? ""}</p>
+      )}
+      {(stage === "district" || stage === "town" || stage === "community") && (
+        <p className="mb-3 text-center text-base font-semibold text-[var(--dim)]">
+          {stage === "district" && county}
+          {stage === "town" && `${district}, ${county}`}
+          {stage === "community" && townEntry && `${townEntry.city}, ${county}`}
+        </p>
       )}
       <div className="relative mx-auto mb-4 w-full max-w-[300px]">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--dim)]" aria-hidden="true">
           <ServiceIcon icon="search" size={22} />
         </span>
-        <label className="sr-only" htmlFor="pk-place-search">Type your place</label>
-        <input id="pk-place-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Type your place" className={bigInputCls} style={{ paddingLeft: "3rem" }} autoComplete="off" />
+        <label className="sr-only" htmlFor={`pk-search-${stage}`}>Search</label>
+        <input id={`pk-search-${stage}`} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" className={bigInputCls} style={{ paddingLeft: "3rem" }} autoComplete="off" />
       </div>
-      {area && (
-        <div className="mb-3">
-          <PickRow
-            label={area.label}
-            sub={area.sub}
-            selected
-            onClick={() => setArea(null)}
-            ariaLabel={`Clear ${area.label}`}
-          />
-        </div>
-      )}
       <div className="flex flex-col gap-2.5">
-        {results.map((item) => (
-          <PickRow
-            key={`${item.isArea ? "area" : "place"}|${item.label}|${item.sub}`}
-            label={item.label}
-            sub={item.sub}
-            onClick={() => {
-              if (item.isArea) {
-                setArea({ county: item.areaCounty, district: item.areaDistrict, label: item.label, sub: item.sub });
-                setQuery("");
-              } else if (item.entry) {
-                setPicked(item.entry);
-                setStage("house");
-              }
-            }}
-            ariaLabel={item.aria}
-          />
+        {visibleNames.map((name) => (
+          <PickRow key={`${stage}|${name}`} label={name} onClick={() => pickName(name)} ariaLabel={`Pick ${name}`} />
         ))}
-        {squashPlaceName(query).length >= 2 && results.length === 0 && noMatch}
+        {searching && visibleNames.length === 0 && (
+          <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">Nothing matches that search.</p>
+        )}
       </div>
     </Screen>
   );
@@ -1689,9 +1695,9 @@ function PlacePicker({
 
 /* ================================================================
    SIGN IN — name, then phone, then code. One thing per screen.
-   A new person then says where they live with one place
-   search, and one short
-   house description. The phone number is
+   A new person picks Worker or User and agrees to that set of
+   terms, then says where they live with the stepped place
+   picker, and one short house description. The phone number is
    the account and never changes after this.
    ================================================================ */
 function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken: string) => void; onCallIn: () => void }) {
@@ -1736,14 +1742,15 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
   }
 
   if (newProfileId != null && !gateDone) {
-    /* First-time gate: a new person reads and agrees to the
-       Terms and Conditions before picking their place. The
-       agreement is recorded on the server against their new
-       profile; no agree, no account. */
+    /* First-time gate: a new person picks Worker or User,
+       reads that set of terms, and agrees to it before picking
+       their place. The agreement, with the set they picked, is
+       recorded on the server against their new profile; no
+       agree, no account. */
     return (
       <TermsGateFlow
-        onAgreed={async () => {
-          await api.agreeToTerms({ sessionToken: pendingToken });
+        onAgreed={async (role) => {
+          await api.agreeToTerms({ sessionToken: pendingToken, role });
           setGateDone(true);
         }}
       />
@@ -1836,11 +1843,12 @@ function SignInFlow({ onDone, onCallIn }: { onDone: (phone: string, sessionToken
 }
 
 /* ================================================================
-   TERMS AND PRIVACY — the two documents, in legal.ts. Every
-   reading screen is two layers: the numbered main points first,
-   then a divider, then the full sections. The gate form adds an
-   I agree button at the bottom of the Terms; the Profile form
-   is read only.
+   TERMS AND PRIVACY: the documents, in legal.ts: Worker
+   Terms, User Terms, and the Privacy Policy. Every reading
+   screen is two layers: the numbered main points first, then
+   a divider, then the full sections. The gate form adds an
+   I agree button at the bottom of the terms for the person's
+   pick; the Profile form is read only.
    ================================================================ */
 function LegalScreen({
   doc,
@@ -1877,7 +1885,7 @@ function LegalScreen({
         ))}
       </div>
       {onAgree && (
-        <button type="button" disabled={agreeBusy} onClick={onAgree} className="mt-8 w-full py-4 text-xl font-black disabled:opacity-50" style={primaryBtnStyle} aria-label="I agree to the Terms and Conditions">
+        <button type="button" disabled={agreeBusy} onClick={onAgree} className="mt-8 w-full py-4 text-xl font-black disabled:opacity-50" style={primaryBtnStyle} aria-label={`I agree to the ${doc.title}`}>
           {agreeBusy ? "Saving..." : "I agree"}
         </button>
       )}
@@ -1885,29 +1893,35 @@ function LegalScreen({
   );
 }
 
-/* The first-time gate: before a person can open their account,
-   they must open the Terms and Conditions and agree. No agree,
-   no entry, and there is no skip. The agreement is recorded on
-   the server (agreeToTerms) before onAgreed lets them continue. */
+/* The first-time gate: before a person can open their
+   account, they first pick Worker or User on one screen, then
+   open the terms for their pick and agree to those terms. No
+   agree, no entry, and there is no skip. The agreement, with
+   which set they agreed to, is recorded on the server
+   (agreeToTerms) before onAgreed lets them continue. The pick
+   decides only which terms they agree to: one profile can
+   still both post jobs and take jobs inside the app. */
 function TermsGateFlow({
   onAgreed,
   onSignOut,
 }: {
-  onAgreed: () => Promise<void>;
+  onAgreed: (role: TermsRole) => Promise<void>;
   onSignOut?: () => void;
 }) {
   const [view, setView] = useState<"gate" | "terms" | "privacy">("gate");
+  const [role, setRole] = useState<TermsRole>("worker");
   const [busy, setBusy] = useState(false);
+  const doc = role === "worker" ? WORKER_TERMS : USER_TERMS;
 
   if (view === "terms") {
     return (
       <LegalScreen
-        doc={TERMS}
+        doc={doc}
         onBack={() => setView("gate")}
         agreeBusy={busy}
         onAgree={async () => {
           setBusy(true);
-          await onAgreed();
+          await onAgreed(role);
           setBusy(false);
         }}
       />
@@ -1919,10 +1933,11 @@ function TermsGateFlow({
   return (
     <Screen title="Terms and Conditions">
       <p className="text-center text-lg font-bold leading-snug text-[var(--text)]">
-        You must read and agree to the Terms and Conditions to open your account.
+        You must read and agree to the terms to open your account. First, pick one.
       </p>
       <div className="mt-6 flex flex-col gap-3">
-        <PickRow label="Terms and Conditions" onClick={() => setView("terms")} ariaLabel="Read the Terms and Conditions" />
+        <PickRow label="Worker" onClick={() => { setRole("worker"); setView("terms"); }} ariaLabel="Read the Worker Terms" />
+        <PickRow label="User" onClick={() => { setRole("user"); setView("terms"); }} ariaLabel="Read the User Terms" />
         <PickRow label="Privacy Policy" onClick={() => setView("privacy")} ariaLabel="Read the Privacy Policy" />
       </div>
       {onSignOut && (
@@ -4043,7 +4058,7 @@ function ProfileFlow({
   }
 
   if (part === "terms") {
-    return <LegalScreen doc={TERMS} onBack={() => setPart("menu")} />;
+    return <LegalScreen doc={profile.termsRole === "user" ? USER_TERMS : WORKER_TERMS} onBack={() => setPart("menu")} />;
   }
 
   if (part === "privacy") {
@@ -4210,9 +4225,12 @@ export function App() {
 
   const rawProfile: MyProfile | null = profileQ.data?.profile ?? null;
   /* First-time gate at the account level: a profile that has
-     never agreed to the Terms sees only the gate, whichever
-     screen it was headed for. Agreeing is recorded on the
-     server, and the profile then reads back as agreed. */
+     never agreed to any terms sees only the gate, whichever
+     screen it was headed for. Agreeing, with the Worker or
+     User set they picked, is recorded on the server, and the
+     profile then reads back as agreed. A profile that agreed
+     to the first combined terms (version 1) stays agreed; it
+     is never trapped at this gate. */
   const gateBlocked = !!rawProfile && !rawProfile.termsAgreed;
   const profile: MyProfile | null = gateBlocked ? null : rawProfile;
 
@@ -4383,8 +4401,8 @@ export function App() {
 
         {gateBlocked && rawProfile && (
           <TermsGateFlow
-            onAgreed={async () => {
-              await api.agreeToTerms({ sessionToken: storedToken });
+            onAgreed={async (role) => {
+              await api.agreeToTerms({ sessionToken: storedToken, role });
               await queryClient.invalidateQueries();
             }}
             onSignOut={forgetPhone}

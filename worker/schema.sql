@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   work_prefs_answered INTEGER NOT NULL DEFAULT 0,
   terms_version INTEGER,
   terms_agreed_at INTEGER,
+  terms_role TEXT,
   verification_status TEXT NOT NULL DEFAULT 'unverified',
   offers_services INTEGER NOT NULL DEFAULT 0,
   gps_lat REAL,
@@ -172,6 +173,11 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_profile ON push_subscriptions 
 -- The deploy runner skips any column that is already there.
 ALTER TABLE profiles ADD COLUMN terms_version INTEGER;
 ALTER TABLE profiles ADD COLUMN terms_agreed_at INTEGER;
+
+-- Which Terms set the person agreed to, Worker or User, for
+-- databases created before the two sets existed.
+-- The deploy runner skips any column that is already there.
+ALTER TABLE profiles ADD COLUMN terms_role TEXT;
 
 -- In-app chat on a job: one row per message, readable and writable
 -- only by the job's two parties (checked server side by token).
