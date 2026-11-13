@@ -963,16 +963,23 @@ const Actions = {
     }
     const job = await jobForId(env, jobId);
     if (!job) return { ok: false, error: "That job no longer exists." };
-    if (job.status !== "open") return { ok: false, error: "Someone else already took this job." };
+    if (job.status !== "open") return { ok: false, error: "This job was just taken." };
     if (job.customer_profile_id === actor.id || samePhone(job.customer_phone, actor.phone)) {
       return { ok: false, error: "You cannot accept your own job." };
     }
-    await runSql(
+    /* First come takes it, enforced in the database: the claim is
+       one conditional update that only lands while the job is
+       still open, so two accepts at the same moment cannot both
+       win. The loser changes zero rows and is told plainly. */
+    const claim = await runSql(
       env,
       `UPDATE jobs SET status = 'accepted', provider_name = ?, provider_phone = ?, provider_id = ?,
-         payment_state = 'waiting', updated_at = ? WHERE id = ?`,
+         payment_state = 'waiting', updated_at = ? WHERE id = ? AND status = 'open'`,
       [actor.full_name, actor.phone, actor.id, Date.now(), jobId],
     );
+    if (!claim.meta || claim.meta.changes !== 1) {
+      return { ok: false, error: "This job was just taken." };
+    }
     await notifyJobEvent(env, job.customer_profile_id, job, "accepted", `A worker accepted your job: ${job.title}`);
     return { ok: true, error: null };
   },
@@ -1372,6 +1379,8 @@ const Actions = {
       "INSERT INTO messages (job_id, sender_profile_id, body, created_at) VALUES (?, ?, ?, ?)",
       [jobId, actor.id, body.trim(), Date.now()],
     );
+    const otherId = isPosterRow(job, actor) ? job.provider_id : job.customer_profile_id;
+    await notifyJobEvent(env, otherId, job, "chat", `New message about the job: ${job.title}`);
     return { ok: true, error: null, id: res.meta.last_row_id };
   },
 
@@ -1435,6 +1444,18 @@ const Actions = {
         createdAt: new Date(s.created_at).toISOString(),
       })),
     };
+  },
+
+  async unreadNotificationCount(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { unread: 0, vapidPublicKey: null };
+    const rows = await allRows(
+      env,
+      "SELECT COUNT(*) AS n FROM notifications WHERE profile_id = ? AND read_at IS NULL",
+      [actor.id],
+    );
+    return { unread: rows[0]?.n ?? 0, vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null };
   },
 
   async listNotifications(env, args) {

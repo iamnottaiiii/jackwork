@@ -1972,6 +1972,110 @@ function keyBytesToB64Url(bytes: ArrayBuffer | null): string {
   return window.btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+type PushOutcome = "on" | "denied" | "unsupported" | "failed";
+
+function pushSupported(vapidPublicKey: string | null): boolean {
+  return (
+    !!vapidPublicKey &&
+    typeof navigator !== "undefined" &&
+    "serviceWorker" in navigator &&
+    typeof window !== "undefined" &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+/* The one real turn-on path, shared by the ask screen and the
+   Notifications screen: ask the browser for permission, register
+   the service worker, subscribe, and save the subscription on
+   the server. Anything less than all of that is not "on". */
+async function enablePhonePush(sessionToken: string, vapidPublicKey: string | null): Promise<PushOutcome> {
+  if (!pushSupported(vapidPublicKey)) return "unsupported";
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === "denied") return "denied";
+    if (permission !== "granted") return "failed";
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    const existing = await reg.pushManager.getSubscription();
+    const sub =
+      existing ??
+      (await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(vapidPublicKey!) as BufferSource,
+      }));
+    const saved = await api.savePushSubscription({
+      sessionToken,
+      endpoint: sub.endpoint,
+      p256dh: keyBytesToB64Url(sub.getKey("p256dh")),
+      auth: keyBytesToB64Url(sub.getKey("auth")),
+    });
+    return saved.ok ? "on" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
+/* The ask: shown once, after create account (and once for people
+   who already have accounts), because notifications only work if
+   the person is asked and says yes. One thing on the screen, a
+   real permission prompt behind the button, and a Skip that
+   never traps anyone. */
+function NotificationAskFlow({
+  sessionToken,
+  vapidPublicKey,
+  onDone,
+}: {
+  sessionToken: string;
+  vapidPublicKey: string | null;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const supported = pushSupported(vapidPublicKey);
+
+  async function turnOn() {
+    setBusy(true);
+    const outcome = await enablePhonePush(sessionToken, vapidPublicKey);
+    setBusy(false);
+    if (outcome === "on") {
+      onDone();
+      return;
+    }
+    if (outcome === "denied") {
+      setNote("Notifications are off. Open your phone settings for Jackwork and allow notifications.");
+      return;
+    }
+    if (outcome === "unsupported") {
+      setNote("Add Jackwork to your Home Screen, open it from there, and notifications can be turned on.");
+      return;
+    }
+    setNote("That did not work. You can try again from Notifications.");
+  }
+
+  return (
+    <Screen title="Notifications">
+      <p className="text-center text-lg font-semibold leading-relaxed text-[var(--text)]">
+        Get told when a worker takes your job, when the price changes, and when a job is done.
+      </p>
+      {supported ? (
+        <button type="button" disabled={busy} onClick={() => void turnOn()} className="mt-6 w-full py-4 text-xl font-black disabled:opacity-50" style={primaryBtnStyle} aria-label="Turn on notifications">
+          {busy ? "Turning on..." : "Turn on notifications"}
+        </button>
+      ) : (
+        <p className="mt-6 text-center text-base font-semibold leading-relaxed text-[var(--dim)]">
+          {vapidPublicKey
+            ? "Add Jackwork to your Home Screen, open it from there, and notifications can be turned on."
+            : "Phone notifications are not ready yet."}
+        </p>
+      )}
+      {note && <p className="mt-4 text-center text-base font-semibold leading-relaxed text-[var(--dim)]">{note}</p>}
+      <button type="button" onClick={onDone} className="mt-3 w-full py-3 text-center text-base font-bold text-[var(--dim)]" aria-label={supported ? "Skip notifications for now" : "Continue without notifications"}>
+        {supported ? "Skip" : "Continue"}
+      </button>
+    </Screen>
+  );
+}
+
 function NotificationsFlow({
   sessionToken,
   onBack,
@@ -1984,18 +2088,21 @@ function NotificationsFlow({
   const notifQ = useQuery({
     queryKey: ["notifications", sessionToken],
     queryFn: () => api.listNotifications({ sessionToken }),
+    refetchInterval: 8000,
   });
   const items = notifQ.data?.notifications ?? [];
   const vapidPublicKey = notifQ.data?.vapidPublicKey ?? null;
-  const [pushState, setPushState] = useState<"unknown" | "unsupported" | "ready" | "on" | "busy">("unknown");
+  const [pushState, setPushState] = useState<"unknown" | "unsupported" | "ready" | "on" | "busy" | "denied">("unknown");
 
   useEffect(() => {
     let live = true;
     (async () => {
-      const supported =
-        "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!vapidPublicKey;
-      if (!supported) {
+      if (!pushSupported(vapidPublicKey)) {
         if (live) setPushState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        if (live) setPushState("denied");
         return;
       }
       try {
@@ -2014,27 +2121,11 @@ function NotificationsFlow({
   async function turnOnPush() {
     if (!vapidPublicKey) return;
     setPushState("busy");
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setPushState("ready");
-        return;
-      }
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(vapidPublicKey) as BufferSource,
-      });
-      await api.savePushSubscription({
-        sessionToken,
-        endpoint: sub.endpoint,
-        p256dh: keyBytesToB64Url(sub.getKey("p256dh")),
-        auth: keyBytesToB64Url(sub.getKey("auth")),
-      });
-      setPushState("on");
-    } catch {
-      setPushState("ready");
-    }
+    const outcome = await enablePhonePush(sessionToken, vapidPublicKey);
+    if (outcome === "on") setPushState("on");
+    else if (outcome === "denied") setPushState("denied");
+    else if (outcome === "unsupported") setPushState("unsupported");
+    else setPushState("ready");
   }
 
   return (
@@ -2049,6 +2140,16 @@ function NotificationsFlow({
       )}
       {pushState === "on" && (
         <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Phone notifications are on.</p>
+      )}
+      {pushState === "denied" && (
+        <p className="mb-4 text-center text-base font-semibold leading-relaxed text-[var(--dim)]">
+          Notifications are off. Open your phone settings for Jackwork and allow notifications, then come back here.
+        </p>
+      )}
+      {pushState === "unsupported" && (
+        <p className="mb-4 text-center text-base font-semibold leading-relaxed text-[var(--dim)]">
+          This browser cannot show Jackwork notifications. Add Jackwork to your Home Screen, open it from there, and turn notifications on here.
+        </p>
       )}
       {notifQ.isPending ? (
         <p className="py-4 text-center text-base font-semibold text-[var(--dim)]">Loading...</p>
@@ -2922,18 +3023,25 @@ function BoardFlow({
   loading,
   placeByProfileId,
   onExit,
-  onOpenJob,
+  onTakeJob,
 }: {
   profile: MyProfile;
   openJobs: Job[];
   loading: boolean;
   placeByProfileId: Map<number, PlaceFields>;
   onExit: () => void;
-  onOpenJob: (job: Job) => void;
+  onTakeJob: (job: Job) => Promise<{ ok: boolean; error: string | null }>;
 }) {
   const queryClient = useQueryClient();
-  const [jobQuery, setJobQuery] = useState("");
   const [showCats, setShowCats] = useState(false);
+  /* One job at a time: the board shows a single open job, full
+     screen. Take it, or Next for the one after it. The list
+     itself refreshes by polling in App, so a job taken by
+     someone else drops out from under this screen on its own
+     and new jobs arrive without a refresh. */
+  const [currentId, setCurrentId] = useState<number | null>(null);
+  const [takeBusy, setTakeBusy] = useState(false);
+  const [takeNote, setTakeNote] = useState<string | null>(null);
   const [prefsSel, setPrefsSel] = useState<string[] | null>(null);
   const prefs = profile.workPreferences;
   // First-visit ask: a person who has never answered (no saved
@@ -2947,14 +3055,7 @@ function BoardFlow({
   const needsAsk = !askDone && !profile.workPrefsAnswered && prefs.length === 0;
 
   const list = useMemo(() => {
-    let l = openJobs;
-    if (jobQuery.trim().length >= 2) {
-      const qWords = norm(jobQuery).split(" ").filter(Boolean);
-      l = l.filter((j) => {
-        const words = norm(`${j.title} ${j.category} ${j.task ?? ""} ${j.location} ${j.customerName}`).split(" ");
-        return qWords.every((w) => wordMatches(w, words));
-      });
-    }
+    const l = openJobs;
     const myPlace = placeOf(profile);
     const score = (j: Job) => {
       let s = 0;
@@ -2973,7 +3074,7 @@ function BoardFlow({
       return s;
     };
     return [...l].sort((a, b) => score(a) - score(b) || b.id - a.id);
-  }, [openJobs, profile, jobQuery, prefs, placeByProfileId]);
+  }, [openJobs, profile, prefs, placeByProfileId]);
 
   if (needsAsk) {
     const toggleAsk = (name: string) =>
@@ -3019,7 +3120,7 @@ function BoardFlow({
       setPrefsSel(sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name]);
     return (
       <Screen title="Categories" onBack={() => setShowCats(false)} layout="top">
-        <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Tap the work you want. It shows first on the board. All jobs still show.</p>
+        <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Tap the work you want. It comes first, one job at a time. All jobs still come up.</p>
         <WorkKindsGrid sel={sel} onToggle={toggle} />
         {/* Normal flow at the end of the list — NOT pinned to the
             bottom of the screen. A pinned solid band here was the
@@ -3030,6 +3131,7 @@ function BoardFlow({
             onClick={async () => {
               await api.updateWorkPreferences({ profileId: profile.id, preferences: sel });
               await queryClient.invalidateQueries();
+              setCurrentId(null);
               setShowCats(false);
             }}
             className="mx-auto w-full max-w-[300px] py-4 text-xl font-black"
@@ -3048,56 +3150,71 @@ function BoardFlow({
     );
   }
 
+  const current = list.find((j) => j.id === currentId) ?? list[0] ?? null;
+  const advance = () => {
+    if (!current) return;
+    const idx = list.findIndex((j) => j.id === current.id);
+    const next = list[(idx + 1) % list.length];
+    if (next && next.id !== current.id) {
+      setCurrentId(next.id);
+      setTakeNote(null);
+    }
+  };
+  async function takeCurrent() {
+    if (!current || takeBusy) return;
+    setTakeBusy(true);
+    setTakeNote(null);
+    const res = await onTakeJob(current);
+    setTakeBusy(false);
+    if (!res.ok) {
+      setTakeNote(res.error ?? "That did not work. Try again.");
+      if ((res.error ?? "").includes("just taken")) advance();
+    }
+  }
+
   return (
     <Screen title="Find work" onBack={onExit} layout="top">
-      <label className="sr-only" htmlFor="bf-search">Search jobs</label>
-      <input id="bf-search" value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="Search jobs" className={`${bigInputCls} mx-auto w-full max-w-[300px]`} autoComplete="off" />
-      <button
-        type="button"
-        onClick={() => { setPrefsSel(null); setShowCats(true); }}
-        className="glass mx-auto mt-3 flex w-full max-w-[300px] items-center justify-center gap-2 py-3 text-base font-extrabold text-[var(--text)]"
-        style={{ borderRadius: 12, fontFamily: "var(--font-display)" }}
-        aria-label={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
-      >
-        Categories{prefs.length > 0 ? ` · ${prefs.length} picked` : ""}
-      </button>
-      {loading && list.length === 0 ? (
+      {loading && !current ? (
         <p className="mt-6 text-center text-base font-semibold text-[var(--dim)]">Loading jobs...</p>
-      ) : list.length === 0 ? (
+      ) : !current ? (
         <p className="mt-6 text-center text-base font-semibold text-[var(--dim)]">
-          {jobQuery.trim() ? "No jobs match that search." : "No open jobs right now. New jobs appear here as people post them."}
+          No open jobs right now. New jobs appear here on their own as people post them.
         </p>
       ) : (
-        <div className="mt-4 flex flex-col gap-2.5 lg:grid lg:grid-cols-2">
-          {list.map((j) => {
-            const price = money(j);
-            const dist = distanceLabelMiles(j, profile);
-            return (
-              <button
-                key={j.id}
-                type="button"
-                onClick={() => onOpenJob(j)}
-                className="glass flex w-full items-center gap-3 p-4 text-left active:opacity-80"
-                style={{ borderRadius: 12, minHeight: 76 }}
-                aria-label={`Open job: ${j.title}, in ${boardPlace(j)}, on ${scheduleLabel(j)}`}
-              >
-                <span className="flex shrink-0 items-center justify-center" style={{ width: 50, height: 50, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
-                  <ServiceIcon icon={serviceOf(j.category)?.icon ?? "toolbox"} size={27} color="var(--bg)" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-lg font-extrabold leading-tight text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{j.title}</span>
-                  <span className="block truncate text-sm font-semibold text-[var(--dim)]">
-                    {boardPlace(j)}
-                  </span>
-                  <span className="block truncate text-sm font-extrabold text-[var(--text)]">{scheduleLabel(j)}</span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                    <span className="text-sm font-extrabold text-[var(--text)]">{price ?? "Price by phone"}</span>
-                    {dist && <span className="px-2 py-0.5 text-xs font-black" style={{ background: "var(--text)", color: "var(--bg)", borderRadius: 12 }}>{dist}</span>}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+        <div className="flex flex-col">
+          <JobFacts job={current} profile={profile} publicView />
+          {takeNote && (
+            <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{takeNote}</p>
+          )}
+          <button
+            type="button"
+            disabled={takeBusy}
+            onClick={() => void takeCurrent()}
+            className="mt-4 w-full py-5 text-2xl font-black disabled:opacity-50"
+            style={primaryBtnStyle}
+            aria-label={`Take this job: ${current.title}`}
+          >
+            {takeBusy ? "Taking..." : "Take this job"}
+          </button>
+          {list.length > 1 && (
+            <button
+              type="button"
+              onClick={advance}
+              className="mt-2.5 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold"
+              style={darkBtnStyle}
+              aria-label="Next job, not for me"
+            >
+              Next job
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setPrefsSel(null); setShowCats(true); }}
+            className="mt-2 w-full py-3 text-center text-base font-bold text-[var(--dim)]"
+            aria-label={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
+          >
+            Categories{prefs.length > 0 ? ` · ${prefs.length} picked` : ""}
+          </button>
         </div>
       )}
     </Screen>
@@ -3503,13 +3620,17 @@ function JobScreen({
   onAccept: (job: Job) => Promise<{ ok: boolean; error: string | null }>;
   onLifecycle: (job: Job, action: JobLifecycleAction, file?: File, amount?: number) => Promise<{ ok: boolean; error: string | null }>;
 }) {
+  /* One thing at a time: the main view carries only the job's
+     current state and its ONE next action. The full facts live
+     on the details view, chat on its own view, the call on its
+     own view, proof on its own view, and a price change on its
+     own view. Nothing from another state is stacked here. */
+  const [view, setView] = useState<"main" | "details" | "chat" | "call" | "proof" | "price">("main");
   const [aBusy, setABusy] = useState(false);
   const [aError, setAError] = useState<string | null>(null);
   const [lBusy, setLBusy] = useState(false);
   const [lError, setLError] = useState<string | null>(null);
-  const [proofStage, setProofStage] = useState<"before" | "after" | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
-  const [showPriceChange, setShowPriceChange] = useState(false);
   const [newPrice, setNewPrice] = useState("");
   const proofRef = useRef<HTMLInputElement>(null);
   const isCustomer = job.customerProfileId === profile.id || samePhone(job.customerPhone, profile.phone);
@@ -3521,9 +3642,14 @@ function JobScreen({
      life. No phone numbers are involved anywhere. */
   const otherName = isCustomer ? (job.providerName ?? "the worker") : job.customerName;
   const canContact = (isCustomer || isWorker) && job.providerId != null && job.status !== "cancelled";
-  const [chatOpen, setChatOpen] = useState(false);
   const call = useJobCall(job.id, sessionToken, profile.id, canContact);
   const callClock = `${Math.floor(call.seconds / 60)}:${String(call.seconds % 60).padStart(2, "0")}`;
+
+  /* An incoming call takes over the screen: it is the one thing
+     happening on this job right now. */
+  useEffect(() => {
+    if (call.phase === "ringing") setView("call");
+  }, [call.phase]);
 
   async function runLifecycle(action: JobLifecycleAction, file?: File, amount?: number) {
     setLError(null);
@@ -3534,291 +3660,192 @@ function JobScreen({
       setLError(res.error ?? "That did not work. Try again.");
       return;
     }
-    setProofStage(null);
     setProofFile(null);
+    setView("main");
   }
 
-  const proofPanel = proofStage && (
-    <div className="glass p-5" style={{ borderRadius: 12 }}>
-      <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{proofStage === "before" ? "Before you start" : "After the job"}</p>
-      <p className="mt-1.5 text-base font-semibold text-[var(--dim)]">Take or pick a picture or recording, or skip.</p>
-      <input
-        ref={proofRef}
-        type="file"
-        accept="image/*,video/*,audio/*"
-        className="hidden"
-        aria-label={proofStage === "before" ? "Before proof file" : "After proof file"}
-        onChange={(e) => { setProofFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
-      />
-      <button type="button" onClick={() => proofRef.current?.click()} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label="Take or pick proof">
-        <ServiceIcon icon="camera" size={22} /> {proofFile ? proofFile.name : "Take or pick proof"}
-      </button>
-      <button
-        type="button"
-        disabled={!proofFile || lBusy}
-        onClick={() => runLifecycle(proofStage === "before" ? "start" : "finish", proofFile ?? undefined)}
-        className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40"
-        style={primaryBtnStyle}
-        aria-label={proofStage === "before" ? "Use this proof and start work" : "Use this proof and mark job done"}
-      >
-        {lBusy ? "Sending..." : "Use this proof"}
-      </button>
-      <button
-        type="button"
-        disabled={lBusy}
-        onClick={() => runLifecycle(proofStage === "before" ? "start" : "finish")}
-        className="w-full py-3 text-base font-bold text-[var(--dim)] disabled:opacity-40"
-        aria-label={proofStage === "before" ? "Skip proof and start work" : "Skip proof and mark job done"}
-      >
-        Skip
-      </button>
-    </div>
-  );
-
-  const callPanel = canContact && call.phase !== "idle" && (
-    <div className="glass mt-4 p-5 text-center" style={{ borderRadius: 12 }}>
-      {call.phase === "calling" && (
-        <>
-          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Calling {otherName.split(" ")[0]}...</p>
-          <button type="button" onClick={() => void call.endCall()} className="mt-4 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
-            End call
-          </button>
-        </>
-      )}
-      {call.phase === "ringing" && (
-        <>
-          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{otherName} is calling you</p>
-          <button type="button" onClick={() => void call.acceptCall()} className="mt-4 w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Accept the call">
-            Accept
-          </button>
-          <button type="button" onClick={() => void call.declineCall()} className="w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="Decline the call">
-            Decline
-          </button>
-        </>
-      )}
-      {call.phase === "connected" && (
-        <>
-          <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>On call · {callClock}</p>
-          <button type="button" onClick={() => void call.endCall()} className="mt-4 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
-            End call
-          </button>
-        </>
-      )}
-    </div>
-  );
-
-  const problemButton = problemStatuses.includes(job.status) && (
-    job.problemReported ? (
-      <p className="text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
-    ) : (
-      <button type="button" disabled={lBusy} onClick={() => runLifecycle("problem")} className="w-full py-3 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="Report a problem with this job">
-        Problem
-      </button>
-    )
-  );
-
-  if (chatOpen && canContact) {
+  if (view === "chat" && canContact) {
     return (
       <ChatScreen
         job={job}
         sessionToken={sessionToken}
         otherName={otherName}
-        onBack={() => setChatOpen(false)}
-        onCall={() => { setChatOpen(false); void call.startCall(); }}
+        onBack={() => setView("main")}
+        onCall={() => { setView("call"); void call.startCall(); }}
       />
     );
   }
 
-  return (
-    <Screen title={job.title} onBack={onBack} layout="top">
-      {canContact && <audio ref={call.remoteAudioRef} autoPlay className="hidden" aria-hidden="true" />}
-      <JobFacts
-        job={job}
-        profile={profile}
-        customerPhotoUrl={job.customerProfileId != null ? photoByProfileId.get(job.customerProfileId) : null}
-        workerPhotoUrl={job.providerId != null ? photoByProfileId.get(job.providerId) : null}
-        showHouse={isCustomer || isWorker}
-        publicView={publicView}
-      />
-      {lError && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+  if (view === "details") {
+    return (
+      <Screen title="Job details" onBack={() => setView("main")} layout="top">
+        <JobFacts
+          job={job}
+          profile={profile}
+          customerPhotoUrl={job.customerProfileId != null ? photoByProfileId.get(job.customerProfileId) : null}
+          workerPhotoUrl={job.providerId != null ? photoByProfileId.get(job.providerId) : null}
+          showHouse={isCustomer || isWorker}
+          publicView={publicView}
+        />
+      </Screen>
+    );
+  }
+
+  if (view === "call" && canContact) {
+    return (
+      <Screen title="Call" onBack={() => setView("main")}>
+        <audio ref={call.remoteAudioRef} autoPlay className="hidden" aria-hidden="true" />
+        {call.phase === "idle" && (
+          <div className="text-center">
+            <button type="button" onClick={() => void call.startCall()} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call ${otherName}`}>
+              <PhoneIcon /> Call {otherName.split(" ")[0]}
+            </button>
+            {call.note && <p className="mt-4 text-base font-semibold text-[var(--dim)]">{call.note}</p>}
+          </div>
+        )}
+        {call.phase === "calling" && (
+          <div className="text-center">
+            <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Calling {otherName.split(" ")[0]}...</p>
+            <button type="button" onClick={() => void call.endCall()} className="mt-5 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
+              End call
+            </button>
+          </div>
+        )}
+        {call.phase === "ringing" && (
+          <div className="text-center">
+            <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{otherName} is calling you</p>
+            <button type="button" onClick={() => void call.acceptCall()} className="mt-5 w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Accept the call">
+              Accept
+            </button>
+            <button type="button" onClick={() => void call.declineCall()} className="w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="Decline the call">
+              Decline
+            </button>
+          </div>
+        )}
+        {call.phase === "connected" && (
+          <div className="text-center">
+            <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>On call · {callClock}</p>
+            <button type="button" onClick={() => void call.endCall()} className="mt-5 w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label="End the call">
+              End call
+            </button>
+          </div>
+        )}
+      </Screen>
+    );
+  }
+
+  if (view === "proof" && isWorker && (job.status === "held" || job.status === "in_progress")) {
+    const stage = job.status === "held" ? "before" : "after";
+    return (
+      <Screen title={stage === "before" ? "Before you start" : "After the job"} onBack={() => setView("main")}>
+        <div className="text-center">
+          <p className="text-base font-semibold text-[var(--dim)]">Take or pick a picture or recording, or skip.</p>
+          <input
+            ref={proofRef}
+            type="file"
+            accept="image/*,video/*,audio/*"
+            className="hidden"
+            aria-label={stage === "before" ? "Before proof file" : "After proof file"}
+            onChange={(e) => { setProofFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
+          />
+          <button type="button" onClick={() => proofRef.current?.click()} className="mt-5 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label="Take or pick proof">
+            <ServiceIcon icon="camera" size={22} /> {proofFile ? proofFile.name : "Take or pick proof"}
+          </button>
+          <button
+            type="button"
+            disabled={!proofFile || lBusy}
+            onClick={() => runLifecycle(stage === "before" ? "start" : "finish", proofFile ?? undefined)}
+            className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40"
+            style={primaryBtnStyle}
+            aria-label={stage === "before" ? "Use this proof and start work" : "Use this proof and mark job done"}
+          >
+            {lBusy ? "Sending..." : "Use this proof"}
+          </button>
+          {lError && <p className="mt-3 text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+          <button
+            type="button"
+            disabled={lBusy}
+            onClick={() => runLifecycle(stage === "before" ? "start" : "finish")}
+            className="w-full py-3 text-base font-bold text-[var(--dim)] disabled:opacity-40"
+            aria-label={stage === "before" ? "Skip proof and start work" : "Skip proof and mark job done"}
+          >
+            Skip
+          </button>
+        </div>
+      </Screen>
+    );
+  }
+
+  if (view === "price" && isWorker && job.status === "accepted") {
+    return (
+      <Screen title="Change price" onBack={() => setView("main")}>
+        <div>
+          <label htmlFor="jw-new-price" className="mb-1.5 block text-center text-base font-bold text-[var(--text)]">New price ({job.budgetCurrency === "LRD" ? "LD" : "USD"})</label>
+          <input
+            id="jw-new-price"
+            value={newPrice}
+            onChange={(e) => setNewPrice(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+            className={`${bigInputCls} mx-auto w-full max-w-[300px]`}
+            aria-label={`New price in ${job.budgetCurrency === "LRD" ? "Liberian dollars" : "US dollars"}`}
+          />
+          <button
+            type="button"
+            disabled={lBusy || !newPrice || Number(newPrice) <= 0}
+            onClick={() => runLifecycle("proposePrice", undefined, Number(newPrice))}
+            className="mt-3 w-full py-4 text-xl font-black disabled:opacity-40"
+            style={primaryBtnStyle}
+            aria-label="Send the new price"
+          >
+            {lBusy ? "Sending..." : "Send new price"}
+          </button>
+          {lError && <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+        </div>
+      </Screen>
+    );
+  }
+
+  /* The small way to the other screens: details, chat, call.
+     Plain text links only, under the one action. */
+  const linkRow = (
+    <div className="mt-4 flex items-center justify-center gap-6">
+      <button type="button" onClick={() => setView("details")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="See the job details">
+        Job details
+      </button>
       {canContact && (
-        <button type="button" onClick={() => setChatOpen(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Chat with ${otherName}`}>
+        <button type="button" onClick={() => setView("chat")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Chat with ${otherName}`}>
           Chat
         </button>
       )}
-      {callPanel}
-      {canContact && call.phase === "idle" && call.note && (
-        <p className="mt-3 text-center text-base font-semibold text-[var(--dim)]">{call.note}</p>
+      {canContact && (
+        <button type="button" onClick={() => setView("call")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Call ${otherName}`}>
+          Call
+        </button>
       )}
+    </div>
+  );
 
-      {isCustomer && (
-        <div className="mt-4 flex flex-col gap-2.5">
-          {job.providerId != null && job.status !== "completed" && job.status !== "cancelled" && (
-            <button type="button" onClick={() => void call.startCall()} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call worker ${job.providerName ?? ""}`}>
-              <PhoneIcon /> Call worker
-            </button>
-          )}
-          {job.status === "accepted" && (
-            <div className="glass p-5 text-center" style={{ borderRadius: 12 }}>
-              <p className="text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>The worker will call to talk through the job.</p>
-            </div>
-          )}
-          {job.status === "price_proposed" && job.proposedBudgetAmount != null && (
-            <div className="glass p-5" style={{ borderRadius: 12 }}>
-              <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>New price</p>
-              <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{job.budgetCurrency === "LRD" ? "LD " : "$"}{job.proposedBudgetAmount.toLocaleString()}</p>
-              <p className="mt-1 text-center text-base font-semibold text-[var(--dim)]">Was {amountLabel(job) ?? "agreed by phone"}</p>
-              <button type="button" disabled={lBusy} onClick={() => runLifecycle("acceptPrice")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Accept the new price">
-                {lBusy ? "Saving..." : "Accept new price"}
-              </button>
-              <button type="button" disabled={lBusy} onClick={() => runLifecycle("declinePrice")} className="w-full py-3 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="No, do not accept the new price">
-                No
-              </button>
-            </div>
-          )}
-          {job.status === "confirmed" && (
-            <div className="glass p-5" style={{ borderRadius: 12 }}>
-              <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Waiting for Mobile Money</p>
-              <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{amountLabel(job) ?? "Price agreed by phone"}</p>
-              <button type="button" disabled={lBusy} onClick={() => runLifecycle("sendMoney")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="I sent the Mobile Money">
-                {lBusy ? "Sending..." : "I sent the Mobile Money"}
-              </button>
-            </div>
-          )}
-          {job.status === "worker_done" && (
-            <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmDone")} className="w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Confirm the job is done">
-              {lBusy ? "Confirming..." : "Confirm job is done"}
-            </button>
-          )}
-          {problemButton}
-          {(job.status === "open" || job.status === "accepted" || job.status === "confirmed" || job.status === "held") && (
-            <button type="button" onClick={() => onStatus(job, "cancelled")} className="w-full py-3 text-base font-bold" style={{ color: "var(--danger)" }} aria-label={job.status === "open" ? "Cancel this posting" : "Cancel this job"}>
-              {job.status === "open" ? "Cancel posting" : "Cancel job"}
-            </button>
-          )}
-          {job.status === "cancelled" && (
-            <button type="button" onClick={() => { onDelete(job); onBack(); }} className="w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Remove this job">
-              Remove
-            </button>
-          )}
-          {job.status === "completed" && job.rating == null && (
-            <button type="button" onClick={() => onRate(job, "worker")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Rate the worker">
-              Rate the worker
-            </button>
-          )}
-          {job.status === "completed" && job.rating != null && (
-            <p className="text-center text-base font-bold text-[var(--text)]">You rated the worker {job.rating} of 5. Thank you.</p>
-          )}
-          {job.status === "completed" && job.ratingByProvider != null && (
-            <p className="text-center text-sm text-[var(--dim)]">The worker rated you {job.ratingByProvider} of 5.{job.reviewByProvider ? ` “${job.reviewByProvider}”` : ""}</p>
-          )}
-        </div>
-      )}
+  const problemLink = problemStatuses.includes(job.status) && (isCustomer || isWorker) && (
+    job.problemReported ? (
+      <p className="text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
+    ) : (
+      <button type="button" disabled={lBusy} onClick={() => runLifecycle("problem")} className="py-2 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="Report a problem with this job">
+        Problem
+      </button>
+    )
+  );
 
-      {isWorker && !isCustomer && (
-        <div className="mt-4 flex flex-col gap-2.5">
-          {job.status === "accepted" ? (
-            <div className="glass p-5" style={{ borderRadius: 12 }}>
-              <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Call to understand the job</p>
-              <p className="mt-3 text-lg font-extrabold text-[var(--text)]">{job.task ?? job.title}</p>
-              {job.description && <p className="mt-1.5 text-base leading-relaxed text-[var(--dim)]">{job.description}</p>}
-              <div className="mt-4 grid gap-1.5 text-base font-semibold text-[var(--text)]">
-                <span>Call before you go.</span>
-                <span>Talk through what the work is.</span>
-                <span>Talk through what is happening, and what needs to be done.</span>
-                <span>Be sure the job is the size you expect.</span>
-              </div>
-              <div className="mt-4 grid gap-2 border-t border-[var(--border)] pt-4 text-base font-semibold text-[var(--text)]">
-                <span className="inline-flex items-start gap-2"><PinIcon />{job.location}{job.landmark ? ` · ${job.landmark}` : ""}</span>
-                {job.houseDirections && <span className="inline-flex items-start gap-2"><PinIcon /> House: {job.houseDirections}</span>}
-                <span>When: {scheduleLabel(job)}</span>
-                <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{amountLabel(job) ?? "Price agreed by phone"}</span>
-              </div>
-              <button type="button" onClick={() => void call.startCall()} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
-                <PhoneIcon /> Call {job.customerName.split(" ")[0]}
-              </button>
-              <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmCall")} className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="We talked, I understand the job, I can do it">
-                {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
-              </button>
-              {!showPriceChange ? (
-                <button type="button" onClick={() => setShowPriceChange(true)} className="w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Change the price">
-                  Change price
-                </button>
-              ) : (
-                <div className="mt-2">
-                  <label htmlFor="jw-new-price" className="mb-1.5 block text-base font-bold text-[var(--text)]">New price ({job.budgetCurrency === "LRD" ? "LD" : "USD"})</label>
-                  <input
-                    id="jw-new-price"
-                    value={newPrice}
-                    onChange={(e) => setNewPrice(e.target.value.replace(/[^0-9]/g, ""))}
-                    inputMode="numeric"
-                    className={`${bigInputCls} mx-auto w-full max-w-[300px]`}
-                    aria-label={`New price in ${job.budgetCurrency === "LRD" ? "Liberian dollars" : "US dollars"}`}
-                  />
-                  <button
-                    type="button"
-                    disabled={lBusy || !newPrice || Number(newPrice) <= 0}
-                    onClick={() => runLifecycle("proposePrice", undefined, Number(newPrice))}
-                    className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40"
-                    style={primaryBtnStyle}
-                    aria-label="Send the new price"
-                  >
-                    {lBusy ? "Sending..." : "Send new price"}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : job.status !== "completed" && job.status !== "cancelled" && (
-            <button type="button" onClick={() => void call.startCall()} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
-              <PhoneIcon /> Call {job.customerName.split(" ")[0]}
-            </button>
-          )}
-          {job.status === "price_proposed" && (
-            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to answer the new price.</p>
-          )}
-          {job.status === "confirmed" && (
-            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for Mobile Money.</p>
-          )}
-          {job.status === "held" && proofStage !== "before" && (
-            <button type="button" onClick={() => { setProofFile(null); setProofStage("before"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Start work on this job">
-              Start work
-            </button>
-          )}
-          {job.status === "held" && proofPanel}
-          {job.status === "in_progress" && proofStage !== "after" && (
-            <button type="button" onClick={() => { setProofFile(null); setProofStage("after"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Mark this job done">
-              Job done
-            </button>
-          )}
-          {job.status === "in_progress" && proofPanel}
-          {job.status === "worker_done" && (
-            <p className="text-center text-base font-bold text-[var(--text)]">Waiting for the poster to confirm.</p>
-          )}
-          {problemButton}
-          {(job.status === "accepted" || job.status === "confirmed") && (
-            <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
-              Release job
-            </button>
-          )}
-          {job.status === "completed" && (
-            <p className="text-center text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Jackwork sent {amountLabel(job) ?? "the money"} to your Mobile Money</p>
-          )}
-          {job.status === "completed" && job.rating != null && (
-            <p className="text-center text-base font-semibold text-[var(--dim)]">The customer rated you {job.rating} of 5.{job.review ? ` “${job.review}”` : ""}</p>
-          )}
-          {job.status === "completed" && job.ratingByProvider == null && (
-            <button type="button" onClick={() => onRate(job, "customer")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Rate the customer">
-              Rate the customer
-            </button>
-          )}
-          {job.status === "completed" && job.ratingByProvider != null && (
-            <p className="text-center text-base font-bold text-[var(--text)]">You rated the customer {job.ratingByProvider} of 5. Thank you.</p>
-          )}
-        </div>
-      )}
+  const stateLine = (text: string) => (
+    <p className="text-center text-lg font-extrabold leading-relaxed text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{text}</p>
+  );
 
-      {!isCustomer && !isWorker && job.status === "open" && (
-        <div className="mt-4">
+  return (
+    <Screen title={job.title} onBack={onBack} layout="top">
+      {canContact && view === "main" && <audio ref={call.remoteAudioRef} autoPlay className="hidden" aria-hidden="true" />}
+
+      {publicView && (
+        <>
+          <JobFacts job={job} profile={profile} publicView />
           <button
             type="button"
             disabled={aBusy}
@@ -3829,17 +3856,189 @@ function JobScreen({
               setABusy(false);
               if (!res.ok) setAError(res.error ?? "Could not accept this job.");
             }}
-            className="w-full py-5 text-2xl font-black disabled:opacity-50"
+            className="mt-4 w-full py-5 text-2xl font-black disabled:opacity-50"
             style={primaryBtnStyle}
             aria-label={`Accept job: ${job.title}`}
           >
             {aBusy ? "Accepting..." : "ACCEPT"}
           </button>
           {aError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{aError}</p>}
+        </>
+      )}
+
+      {!publicView && !isCustomer && !isWorker && (
+        <p className="mt-4 text-center text-base font-semibold text-[var(--dim)]">This job is not yours. Your own jobs are under My jobs.</p>
+      )}
+
+      {isCustomer && job.status === "price_proposed" && job.proposedBudgetAmount != null && (
+        <div className="glass p-5" style={{ borderRadius: 12 }}>
+          <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>New price</p>
+          <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{job.budgetCurrency === "LRD" ? "LD " : "$"}{job.proposedBudgetAmount.toLocaleString()}</p>
+          <p className="mt-1 text-center text-base font-semibold text-[var(--dim)]">Was {amountLabel(job) ?? "agreed by phone"}</p>
+          <button type="button" disabled={lBusy} onClick={() => runLifecycle("acceptPrice")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Accept the new price">
+            {lBusy ? "Saving..." : "Accept new price"}
+          </button>
+          <button type="button" disabled={lBusy} onClick={() => runLifecycle("declinePrice")} className="w-full py-3 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="No, do not accept the new price">
+            No
+          </button>
+          {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
         </div>
       )}
-      {!isCustomer && !isWorker && job.status !== "open" && (
-        <p className="mt-4 text-center text-base font-semibold text-[var(--dim)]">This job is not yours. Your own jobs are under My jobs.</p>
+
+      {isCustomer && job.status === "confirmed" && (
+        <div className="glass p-5" style={{ borderRadius: 12 }}>
+          <p className="text-center text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Waiting for Mobile Money</p>
+          <p className="mt-1.5 text-center text-lg font-extrabold text-[var(--text)]">{amountLabel(job) ?? "Price agreed by phone"}</p>
+          <button type="button" disabled={lBusy} onClick={() => runLifecycle("sendMoney")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="I sent the Mobile Money">
+            {lBusy ? "Sending..." : "I sent the Mobile Money"}
+          </button>
+          {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+        </div>
+      )}
+
+      {isCustomer && job.status === "accepted" && stateLine("The worker will talk with you first, inside the app.")}
+      {isCustomer && job.status === "held" && stateLine("Jackwork has the money.")}
+      {isCustomer && job.status === "in_progress" && stateLine("The worker is on the job.")}
+      {isCustomer && job.status === "open" && stateLine("Waiting for a worker to take this job.")}
+      {isCustomer && job.status === "cancelled" && stateLine("This job is cancelled.")}
+
+      {isCustomer && job.status === "worker_done" && (
+        <>
+          {stateLine("The worker says the job is done.")}
+          <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmDone")} className="mt-4 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="Confirm the job is done">
+            {lBusy ? "Confirming..." : "Confirm job is done"}
+          </button>
+          {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+        </>
+      )}
+
+      {isCustomer && job.status === "completed" && (
+        <div className="flex flex-col gap-2.5">
+          {job.rating == null ? (
+            <button type="button" onClick={() => onRate(job, "worker")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Rate the worker">
+              Rate the worker
+            </button>
+          ) : (
+            <p className="text-center text-base font-bold text-[var(--text)]">You rated the worker {job.rating} of 5. Thank you.</p>
+          )}
+          {job.ratingByProvider != null && (
+            <p className="text-center text-sm text-[var(--dim)]">The worker rated you {job.ratingByProvider} of 5.{job.reviewByProvider ? ` “${job.reviewByProvider}”` : ""}</p>
+          )}
+        </div>
+      )}
+
+      {isCustomer && (job.status === "open" || job.status === "accepted" || job.status === "price_proposed" || job.status === "confirmed" || job.status === "held" || job.status === "worker_done") && (
+        <>
+          {linkRow}
+          <div className="mt-1 flex items-center justify-center gap-6">
+            {problemLink}
+            {(job.status === "open" || job.status === "accepted" || job.status === "confirmed" || job.status === "held") && (
+              <button type="button" onClick={() => onStatus(job, "cancelled")} className="py-2 text-base font-bold" style={{ color: "var(--danger)" }} aria-label={job.status === "open" ? "Cancel this posting" : "Cancel this job"}>
+                {job.status === "open" ? "Cancel posting" : "Cancel job"}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {isCustomer && job.status === "completed" && linkRow}
+      {isCustomer && job.status === "cancelled" && (
+        <button type="button" onClick={() => { onDelete(job); onBack(); }} className="mt-3 w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Remove this job">
+          Remove
+        </button>
+      )}
+
+      {isWorker && !isCustomer && job.status === "accepted" && (
+        <>
+          <div className="glass p-5" style={{ borderRadius: 12 }}>
+            <p className="text-xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Call to understand the job</p>
+            <p className="mt-3 text-lg font-extrabold text-[var(--text)]">{job.task ?? job.title}</p>
+            {job.description && <p className="mt-1.5 text-base leading-relaxed text-[var(--dim)]">{job.description}</p>}
+            <div className="mt-4 grid gap-1.5 text-base font-semibold text-[var(--text)]">
+              <span>Call before you go.</span>
+              <span>Talk through what the work is.</span>
+              <span>Talk through what is happening, and what needs to be done.</span>
+              <span>Be sure the job is the size you expect.</span>
+            </div>
+            <div className="mt-4 grid gap-2 border-t border-[var(--border)] pt-4 text-base font-semibold text-[var(--text)]">
+              <span className="inline-flex items-start gap-2"><PinIcon />{job.location}{job.landmark ? ` · ${job.landmark}` : ""}</span>
+              {job.houseDirections && <span className="inline-flex items-start gap-2"><PinIcon /> House: {job.houseDirections}</span>}
+              <span>When: {scheduleLabel(job)}</span>
+              <span className="text-lg font-extrabold" style={{ fontFamily: "var(--font-display)" }}>{amountLabel(job) ?? "Price agreed by phone"}</span>
+            </div>
+          </div>
+          <button type="button" onClick={() => { setView("call"); void call.startCall(); }} className="mt-4 inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call customer ${job.customerName}`}>
+            <PhoneIcon /> Call {job.customerName.split(" ")[0]}
+          </button>
+          <button type="button" disabled={lBusy} onClick={() => runLifecycle("confirmCall")} className="mt-2.5 w-full py-4 text-xl font-black disabled:opacity-40" style={primaryBtnStyle} aria-label="We talked, I understand the job, I can do it">
+            {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
+          </button>
+          {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+          <div className="mt-2 flex items-center justify-center gap-6">
+            <button type="button" onClick={() => setView("details")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="See the job details">
+              Job details
+            </button>
+            <button type="button" onClick={() => setView("chat")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Chat with ${otherName}`}>
+              Chat
+            </button>
+            <button type="button" onClick={() => { setNewPrice(""); setLError(null); setView("price"); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Change the price">
+              Change price
+            </button>
+          </div>
+          <div className="mt-1 flex items-center justify-center gap-6">
+            {problemLink}
+            <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
+              Release job
+            </button>
+          </div>
+        </>
+      )}
+
+      {isWorker && !isCustomer && job.status !== "accepted" && (
+        <>
+          {job.status === "price_proposed" && stateLine("Waiting for the poster to answer the new price.")}
+          {job.status === "confirmed" && stateLine("Waiting for Mobile Money.")}
+          {job.status === "worker_done" && stateLine("Waiting for the poster to confirm.")}
+          {job.status === "cancelled" && stateLine("This job is cancelled.")}
+          {job.status === "held" && (
+            <button type="button" onClick={() => { setProofFile(null); setLError(null); setView("proof"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Start work on this job">
+              Start work
+            </button>
+          )}
+          {job.status === "in_progress" && (
+            <button type="button" onClick={() => { setProofFile(null); setLError(null); setView("proof"); }} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Mark this job done">
+              Job done
+            </button>
+          )}
+          {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
+          {job.status === "completed" && (
+            <div className="flex flex-col gap-2.5">
+              <p className="text-center text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Jackwork sent {amountLabel(job) ?? "the money"} to your Mobile Money</p>
+              {job.rating != null && (
+                <p className="text-center text-base font-semibold text-[var(--dim)]">The customer rated you {job.rating} of 5.{job.review ? ` “${job.review}”` : ""}</p>
+              )}
+              {job.ratingByProvider == null ? (
+                <button type="button" onClick={() => onRate(job, "customer")} className="w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="Rate the customer">
+                  Rate the customer
+                </button>
+              ) : (
+                <p className="text-center text-base font-bold text-[var(--text)]">You rated the customer {job.ratingByProvider} of 5. Thank you.</p>
+              )}
+            </div>
+          )}
+          {(job.status === "price_proposed" || job.status === "confirmed" || job.status === "held" || job.status === "in_progress" || job.status === "worker_done" || job.status === "completed") && (
+            <>
+              {linkRow}
+              <div className="mt-1 flex items-center justify-center gap-6">
+                {problemLink}
+                {job.status === "confirmed" && (
+                  <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
+                    Release job
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </>
       )}
     </Screen>
   );
@@ -4216,11 +4415,31 @@ export function App() {
   const [jobReturn, setJobReturn] = useState<"myjobs" | "board" | "notifications">("myjobs");
   const [rateTarget, setRateTarget] = useState<{ job: Job; side: "worker" | "customer" } | null>(null);
   const [callInReturn, setCallInReturn] = useState<"signin" | "start">("signin");
+  /* The notifications ask shows once per device: after create
+     account, and once for people who already had accounts when
+     the ask arrived. The flag is only that the ask was shown;
+     the Notifications screen can always turn push on later. */
+  const [notifAskDone, setNotifAskDone] = useState<boolean>(() => {
+    try { return localStorage.getItem("jw_notif_ask_v1") === "1"; } catch { return false; }
+  });
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void queryClient.invalidateQueries();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [queryClient]);
 
   const profileQ = useQuery({
     queryKey: ["my-profile", storedPhone, storedToken],
     queryFn: () => api.getMyProfile({ phone: storedPhone, sessionToken: storedToken }),
     enabled: digits(storedPhone).length >= 6 && storedToken.length >= 10,
+    refetchInterval: 15000,
   });
 
   const rawProfile: MyProfile | null = profileQ.data?.profile ?? null;
@@ -4234,14 +4453,27 @@ export function App() {
   const gateBlocked = !!rawProfile && !rawProfile.termsAgreed;
   const profile: MyProfile | null = gateBlocked ? null : rawProfile;
 
+  /* Live updates: open screens poll on their own, so a job
+     taken by someone else drops off the board, a job screen
+     follows the other side's actions, My jobs stays current,
+     and the notifications dot appears, all with no refresh.
+     Coming back to the app refetches at once (the effect below). */
   const jobsQ = useQuery({
     queryKey: ["jobs", storedToken],
     queryFn: () => api.listJobs({ limit: 200, viewerSessionToken: storedToken || undefined }),
+    refetchInterval: 4000,
+  });
+  const unreadQ = useQuery({
+    queryKey: ["unread-notifications", storedToken],
+    queryFn: () => api.unreadNotificationCount({ sessionToken: storedToken }),
+    enabled: storedToken.length >= 10,
+    refetchInterval: 5000,
   });
   const allProfilesQ = useQuery({
     queryKey: ["all-profiles"],
     queryFn: () => api.listAllProfiles({ limit: 200 }),
     enabled: digits(storedPhone).length >= 6,
+    refetchInterval: 15000,
   });
   const jobs = useMemo(() => jobsQ.data?.jobs ?? [], [jobsQ.data]);
   const openJobs = useMemo(() => jobs.filter((j) => j.status === "open"), [jobs]);
@@ -4433,7 +4665,19 @@ export function App() {
             group in the middle. Nothing is highlighted. The profile
             is NOT one of the choices: it sits small in the bottom
             corner, just the person's picture and name. */}
-        {profile && !needsSetup && screen === "start" && (
+        {profile && !needsSetup && screen === "start" && !notifAskDone && (
+          <NotificationAskFlow
+            sessionToken={storedToken}
+            vapidPublicKey={unreadQ.data?.vapidPublicKey ?? null}
+            onDone={() => {
+              try { localStorage.setItem("jw_notif_ask_v1", "1"); } catch { /* private mode */ }
+              setNotifAskDone(true);
+              void queryClient.invalidateQueries();
+            }}
+          />
+        )}
+
+        {profile && !needsSetup && screen === "start" && notifAskDone && (
           <div className="relative flex w-full flex-1 flex-col">
             <BrandMark />
             <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col items-center justify-center pb-16">
@@ -4474,9 +4718,14 @@ export function App() {
                   type="button"
                   onClick={() => setScreen("notifications")}
                   className="inline-flex items-center gap-2 py-2 text-base font-bold text-[var(--dim)]"
-                  aria-label="Notifications"
+                  aria-label={(unreadQ.data?.unread ?? 0) > 0 ? `Notifications, ${unreadQ.data?.unread} new` : "Notifications"}
                 >
                   <BellIcon /> Notifications
+                  {(unreadQ.data?.unread ?? 0) > 0 && (
+                    <span className="flex h-6 min-w-6 items-center justify-center px-1 text-xs font-black" style={{ background: "var(--select)", color: "var(--select-ink)", borderRadius: 12 }} aria-hidden="true">
+                      {unreadQ.data?.unread}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -4527,7 +4776,11 @@ export function App() {
             loading={jobsQ.isPending}
             placeByProfileId={placeByProfileId}
             onExit={() => setScreen("start")}
-            onOpenJob={(job) => goToJob(job, "board")}
+            onTakeJob={async (job) => {
+              const res = await handleAccept(job);
+              if (res.ok) goToJob(job, "myjobs");
+              return res;
+            }}
           />
         )}
 

@@ -1189,11 +1189,15 @@ export const Actions = {
       }
       const job = await jobForId(ctx, args.jobId);
       if (!job) return { ok: false, error: "That job no longer exists." };
-      if (job.status !== "open") return { ok: false, error: "Someone else already took this job." };
+      if (job.status !== "open") return { ok: false, error: "This job was just taken." };
       if (job.customerProfileId === actor.id || samePhone(job.customerPhone, actor.phone)) {
         return { ok: false, error: "You cannot accept your own job." };
       }
-      await db
+      /* First come takes it, enforced in the database: the claim
+         only lands while the job is still open, so two accepts at
+         the same moment cannot both win. The loser updates no row
+         and is told plainly. */
+      const claimed = await db
         .update(schema.jobs)
         .set({
           status: "accepted",
@@ -1203,7 +1207,11 @@ export const Actions = {
           paymentState: "waiting",
           updatedAt: new Date(),
         })
-        .where(eq(schema.jobs.id, args.jobId));
+        .where(and(eq(schema.jobs.id, args.jobId), eq(schema.jobs.status, "open")))
+        .returning({ id: schema.jobs.id });
+      if (claimed.length !== 1) {
+        return { ok: false, error: "This job was just taken." };
+      }
       await notifyJobEvent(ctx, job.customerProfileId, job, "accepted", `A worker accepted your job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null };
@@ -1749,6 +1757,8 @@ export const Actions = {
         .insert(schema.messages)
         .values({ jobId: args.jobId, senderProfileId: actor.id, body: args.body.trim() })
         .returning({ id: schema.messages.id });
+      const otherId = isPoster(job, actor) ? job.providerId : job.customerProfileId;
+      await notifyJobEvent(ctx, otherId, job, "chat", `New message about the job: ${job.title}`);
       ctx.invalidateQueries();
       return { ok: true, error: null, id: inserted[0]?.id ?? null };
     },
@@ -1826,6 +1836,27 @@ export const Actions = {
           createdAt: (s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt as any)).toISOString(),
         })),
       };
+    },
+  }),
+
+  unreadNotificationCount: defineAction({
+    description: "How many of the signed-in person's notifications are still unread, plus the Web Push public key. Reading this count never marks anything seen, so the app can poll it for the start screen dot.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+    }),
+    response: z.object({
+      unread: z.number(),
+      vapidPublicKey: z.string().nullable(),
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { unread: 0, vapidPublicKey: null };
+      const rows = await db
+        .select({ id: schema.notifications.id })
+        .from(schema.notifications)
+        .where(and(eq(schema.notifications.profileId, actor.id), isNull(schema.notifications.readAt)));
+      return { unread: rows.length, vapidPublicKey: vapidKeys()?.publicKey ?? null };
     },
   }),
 
