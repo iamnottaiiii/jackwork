@@ -89,6 +89,10 @@ function blobUrl(key) {
    a problem within this window after the worker marks the job done,
    the job completes automatically and the simulated payout shows. */
 const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
+/* A ring lives this long. After it, the ring is a missed call:
+   its rows are swept away and no client may show it as a call
+   happening now. */
+const RING_FRESH_MS = 45000;
 
 const ADMIN_PHONE = "+12297120887";
 
@@ -423,7 +427,7 @@ async function notifyJobEvent(env, profileId, job, kind, text) {
     }
     const subs = await allRows(env, "SELECT * FROM push_subscriptions WHERE profile_id = ?", [profileId]);
     for (const s of subs) {
-      await sendWebPush(env, s, JSON.stringify({ text, jobId: job?.id ?? null }));
+      await sendWebPush(env, s, JSON.stringify({ text, jobId: job?.id ?? null, kind }));
     }
   } catch {
     /* Notifications never break the job action that caused them. */
@@ -431,6 +435,26 @@ async function notifyJobEvent(env, profileId, job, kind, text) {
 }
 
 const PROOF_MIMES = ["image/", "video/", "audio/"];
+
+/* Deletes a job's dead call rows: the newest ring that nobody
+   answered, declined, or ended within RING_FRESH_MS, and every
+   row that came with it. Runs when signals are read and when a
+   new ring is sent, so a stale ring can never resurface as a
+   call happening now. Resolved calls are left alone. */
+async function sweepExpiredRings(env, jobId) {
+  for (let pass = 0; pass < 10; pass++) {
+    const rows = await allRows(env, "SELECT * FROM call_signals WHERE job_id = ? ORDER BY id ASC", [jobId]);
+    let lastRing = null;
+    for (const r of rows) if (r.kind === "ring") lastRing = r;
+    if (!lastRing) return;
+    const resolved = rows.some(
+      (r) => r.id > lastRing.id && (r.kind === "accept" || r.kind === "decline" || r.kind === "end"),
+    );
+    if (resolved) return;
+    if (Date.now() - Number(lastRing.created_at) <= RING_FRESH_MS) return;
+    await runSql(env, "DELETE FROM call_signals WHERE job_id = ? AND id >= ?", [jobId, lastRing.id]);
+  }
+}
 
 function toProfile(row) {
   // The ID document itself (number and photo) is NOT part of the profile
@@ -1399,6 +1423,7 @@ const Actions = {
     const poster = isPosterRow(job, actor);
     const worker = isWorkerRow(job, actor);
     if (!poster && !worker) return { ok: false, error: "Only the two people on this job can call on it." };
+    if (kind === "ring") await sweepExpiredRings(env, jobId);
     const res = await runSql(
       env,
       "INSERT INTO call_signals (job_id, from_profile_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -1430,6 +1455,7 @@ const Actions = {
     const job = await jobForId(env, jobId);
     if (!job || !job.provider_id) return { signals: [] };
     if (!isPosterRow(job, actor) && !isWorkerRow(job, actor)) return { signals: [] };
+    await sweepExpiredRings(env, jobId);
     const rows = await allRows(
       env,
       "SELECT * FROM call_signals WHERE job_id = ? AND id > ? ORDER BY id ASC LIMIT 200",
@@ -1480,6 +1506,19 @@ const Actions = {
        red dots show on this visit and are gone on the next. */
     await runSql(env, "UPDATE notifications SET read_at = ? WHERE profile_id = ? AND read_at IS NULL", [Date.now(), actor.id]);
     return { notifications, vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null };
+  },
+
+  async markNotificationRead(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const notificationId = reqId(args.notificationId, "notificationId");
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false };
+    await runSql(
+      env,
+      "UPDATE notifications SET read_at = ? WHERE id = ? AND profile_id = ? AND read_at IS NULL",
+      [Date.now(), notificationId, actor.id],
+    );
+    return { ok: true };
   },
 
   async savePushSubscription(env, args) {
@@ -1622,17 +1661,34 @@ const Actions = {
 const SW_JS = `self.addEventListener("push", function (event) {
   var text = "You have a new notification.";
   var jobId = null;
+  var kind = null;
   try {
     var d = event.data ? event.data.json() : null;
-    if (d && d.text) { text = d.text; jobId = d.jobId || null; }
+    if (d && d.text) { text = d.text; jobId = d.jobId || null; kind = d.kind || null; }
   } catch (e) {
     try { text = event.data.text(); } catch (e2) {}
   }
-  event.waitUntil(self.registration.showNotification("Jackwork", { body: text, icon: "/favicon.ico", data: { jobId: jobId } }));
+  event.waitUntil(self.registration.showNotification("Jackwork", { body: text, icon: "/favicon.ico", data: { jobId: jobId, kind: kind } }));
 });
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
-  event.waitUntil(clients.openWindow("/"));
+  var data = event.notification.data || {};
+  var jobId = data.jobId || null;
+  var kind = data.kind || null;
+  var view = kind === "chat" ? "chat" : kind === "call" ? "call" : "job";
+  var url = jobId ? "/?job=" + jobId + "&view=" + view : "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if ("focus" in c) {
+          c.postMessage({ type: "jw-route", jobId: jobId, kind: kind });
+          return c.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
 });
 `;
 

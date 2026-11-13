@@ -20,6 +20,20 @@ type MyProfile = NonNullable<ApiResponse<typeof api, "getMyProfile">["profile"]>
    button appear with that same detail. */
 const CALL_IN_NUMBER: string = "";
 
+/* A ring lives this long, the same limit the server sweeps by.
+   Older than this, a ring is a missed call, never a call
+   happening now. */
+const RING_FRESH_MS = 45000;
+
+/* Where opening a job lands: its main screen, its Chat, or its
+   Call screen. Notifications route by their kind. */
+type JobRouteView = "main" | "chat" | "call";
+function routeViewForKind(kind: string): JobRouteView {
+  if (kind === "chat") return "chat";
+  if (kind === "call") return "call";
+  return "main";
+}
+
 /* The picked state, everywhere in the app: a smooth, soothing
    deep red fill with white text and a soft red glow, instead of
    the old white/light fill. Used by the calendar day, the time
@@ -1162,21 +1176,23 @@ const glassBtnStyle = { borderRadius: 12, fontFamily: "var(--font-display)" } as
 /** One tappable row in a pick list (county, district, town, task...).
     A row the person already picked fills with the red selection
     highlight, like every other picked state in the app. */
-function PickRow({ label, sub, icon, onClick, ariaLabel, selected }: { label: string; sub?: string; icon?: ReactNode; onClick: () => void; ariaLabel?: string; selected?: boolean }) {
+function PickRow({ label, sub, icon, onClick, ariaLabel, selected, danger, disabled }: { label: string; sub?: string; icon?: ReactNode; onClick: () => void; ariaLabel?: string; selected?: boolean; danger?: boolean; disabled?: boolean }) {
+  const labelColor = danger ? "var(--danger)" : selected ? "var(--select-ink)" : "var(--text)";
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={ariaLabel ?? label}
-      className="glass flex w-full items-center gap-3 px-5 py-4 text-left active:opacity-80"
+      className="glass flex w-full items-center gap-3 px-5 py-4 text-left active:opacity-80 disabled:opacity-60"
       style={{ borderRadius: 12, minHeight: 64, ...selectStyle(!!selected) }}
     >
       {icon && <span className="shrink-0" style={{ color: selected ? "var(--select-ink)" : "var(--text)" }} aria-hidden="true">{icon}</span>}
       <span className="min-w-0 flex-1">
-        <span className="block text-lg font-extrabold leading-tight" style={{ fontFamily: "var(--font-display)", color: selected ? "var(--select-ink)" : "var(--text)" }}>{label}</span>
+        <span className="block text-lg font-extrabold leading-tight" style={{ fontFamily: "var(--font-display)", color: labelColor }}>{label}</span>
         {sub && <span className="block text-sm font-semibold" style={{ color: selected ? "var(--select-ink)" : "var(--dim)", opacity: selected ? 0.85 : 1 }}>{sub}</span>}
       </span>
-      <span style={{ color: selected ? "var(--select-ink)" : "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
+      <span style={{ color: labelColor === "var(--danger)" ? "var(--danger)" : selected ? "var(--select-ink)" : "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
     </button>
   );
 }
@@ -2079,11 +2095,11 @@ function NotificationAskFlow({
 function NotificationsFlow({
   sessionToken,
   onBack,
-  onOpenJob,
+  onOpenNotification,
 }: {
   sessionToken: string;
   onBack: () => void;
-  onOpenJob: (jobId: number) => void;
+  onOpenNotification: (n: { id: number; jobId: number | null; kind: string }) => void;
 }) {
   const notifQ = useQuery({
     queryKey: ["notifications", sessionToken],
@@ -2163,7 +2179,9 @@ function NotificationsFlow({
               type="button"
               disabled={n.jobId == null}
               onClick={() => {
-                if (n.jobId != null) onOpenJob(n.jobId);
+                if (n.jobId == null) return;
+                void api.markNotificationRead({ sessionToken, notificationId: n.id }).catch(() => {});
+                onOpenNotification(n);
               }}
               className="glass flex w-full items-center gap-3 px-5 py-4 text-left active:opacity-80 disabled:opacity-60"
               style={{ borderRadius: 12, minHeight: 64 }}
@@ -3207,14 +3225,14 @@ function BoardFlow({
               Next job
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => { setPrefsSel(null); setShowCats(true); }}
-            className="mt-2 w-full py-3 text-center text-base font-bold text-[var(--dim)]"
-            aria-label={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
-          >
-            Categories{prefs.length > 0 ? ` · ${prefs.length} picked` : ""}
-          </button>
+          <div className="mt-2.5">
+            <PickRow
+              label="Categories"
+              sub={prefs.length > 0 ? `${prefs.length} kinds of work picked` : "Pick the work you want"}
+              onClick={() => { setPrefsSel(null); setShowCats(true); }}
+              ariaLabel={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
+            />
+          </div>
         </div>
       )}
     </Screen>
@@ -3372,9 +3390,11 @@ function ChatScreen({
 
   return (
     <Screen title="Chat" onBack={onBack} layout="top">
-      <button type="button" onClick={onCall} className="inline-flex w-full items-center justify-center gap-2 py-4 text-lg font-extrabold" style={darkBtnStyle} aria-label={`Call ${otherName}`}>
-        <PhoneIcon /> Call {otherName.split(" ")[0]}
-      </button>
+      <div className="flex">
+        <button type="button" onClick={onCall} className="inline-flex items-center justify-center gap-2 px-5 py-3 text-base font-black" style={darkBtnStyle} aria-label={`Call ${otherName}`}>
+          <PhoneIcon /> Call {otherName.split(" ")[0]}
+        </button>
+      </div>
       <div className="mt-4 flex flex-col gap-2">
         {messages.length === 0 && (
           <p className="py-6 text-center text-base font-semibold text-[var(--dim)]">No messages yet.</p>
@@ -3434,6 +3454,7 @@ function useJobCall(jobId: number, sessionToken: string, myProfileId: number, ac
   const phaseRef = useRef<CallPhase>("idle");
   phaseRef.current = phase;
   const pendingOfferRef = useRef<string | null>(null);
+  const ringingSinceRef = useRef(0);
   const pendingCandidatesRef = useRef<string[]>([]);
   const connectedAtRef = useRef(0);
 
@@ -3456,6 +3477,7 @@ function useJobCall(jobId: number, sessionToken: string, myProfileId: number, ac
 
   function goIdle() {
     cleanup();
+    ringingSinceRef.current = 0;
     phaseRef.current = "idle";
     setPhase("idle");
   }
@@ -3542,12 +3564,33 @@ function useJobCall(jobId: number, sessionToken: string, myProfileId: number, ac
   useEffect(() => {
     if (!active) return;
     const tick = async () => {
+      /* A ring that has been ringing past its life is over,
+         even if no new signal arrives to say so. */
+      if (phaseRef.current === "ringing" && ringingSinceRef.current > 0 && Date.now() - ringingSinceRef.current > RING_FRESH_MS) {
+        goIdle();
+      }
       try {
         const res = await api.listCallSignals({ jobId, sessionToken, sinceId: lastSignalRef.current });
-        for (const s of res.signals) {
+        for (let i = 0; i < res.signals.length; i++) {
+          const s = res.signals[i];
+          if (!s) continue;
           lastSignalRef.current = Math.max(lastSignalRef.current, s.id);
           if (s.fromProfileId === myProfileId) continue;
           if (s.kind === "ring" || s.kind === "offer") {
+            /* A ring that this same batch already resolves
+               (accepted, declined, or ended further down the
+               list) is over, however fresh it is: replaying the
+               job's history must land on where the call ended,
+               never back on a call happening now. */
+            const resolvedLater = res.signals
+              .slice(i + 1)
+              .some((x) => x.kind === "accept" || x.kind === "decline" || x.kind === "end");
+            if (resolvedLater) continue;
+            /* Only a fresh ring is a live call. An old one is a
+               missed call and must never take the screen over. */
+            const age = Date.now() - new Date(s.createdAt).getTime();
+            if (age > RING_FRESH_MS) continue;
+            if (s.kind === "ring") ringingSinceRef.current = new Date(s.createdAt).getTime();
             if (s.kind === "offer") pendingOfferRef.current = s.payload;
             if (phaseRef.current === "idle") {
               setNote(null);
@@ -3608,6 +3651,7 @@ function JobScreen({
   onRate,
   onAccept,
   onLifecycle,
+  initialView,
 }: {
   job: Job;
   profile: MyProfile;
@@ -3619,13 +3663,19 @@ function JobScreen({
   onRate: (job: Job, side: "worker" | "customer") => void;
   onAccept: (job: Job) => Promise<{ ok: boolean; error: string | null }>;
   onLifecycle: (job: Job, action: JobLifecycleAction, file?: File, amount?: number) => Promise<{ ok: boolean; error: string | null }>;
+  initialView?: JobRouteView;
 }) {
   /* One thing at a time: the main view carries only the job's
      current state and its ONE next action. The full facts live
      on the details view, chat on its own view, the call on its
      own view, proof on its own view, and a price change on its
      own view. Nothing from another state is stacked here. */
-  const [view, setView] = useState<"main" | "details" | "chat" | "call" | "proof" | "price">("main");
+  /* A notification can land the person straight in this job's
+     Chat. The Call view is never the starting view: it opens on
+     its own only while a call is genuinely ringing (the effect
+     below), so a "call" route with no live ring lands here, on
+     the job's main screen. */
+  const [view, setView] = useState<"main" | "details" | "chat" | "call" | "proof" | "price">(initialView === "chat" ? "chat" : "main");
   const [aBusy, setABusy] = useState(false);
   const [aError, setAError] = useState<string | null>(null);
   const [lBusy, setLBusy] = useState(false);
@@ -3805,35 +3855,103 @@ function JobScreen({
     );
   }
 
-  /* The small way to the other screens: details, chat, call.
-     Plain text links only, under the one action. */
-  const linkRow = (
-    <div className="mt-4 flex items-center justify-center gap-6">
-      <button type="button" onClick={() => setView("details")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="See the job details">
-        Job details
-      </button>
-      {canContact && (
-        <button type="button" onClick={() => setView("chat")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Chat with ${otherName}`}>
-          Chat
-        </button>
-      )}
-      {canContact && (
-        <button type="button" onClick={() => setView("call")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Call ${otherName}`}>
-          Call
-        </button>
-      )}
-    </div>
+  /* The way to the other screens and the side actions: proper
+     rows in the app's standard row button style (the same
+     PickRow the place lists and profile menu use), stacked
+     under the one main action. No bare text links. */
+  const chatRow = canContact ? (
+    <PickRow key="chat" label="Chat" onClick={() => setView("chat")} ariaLabel={`Chat with ${otherName}`} />
+  ) : null;
+  const callRow = canContact ? (
+    <PickRow key="call" label="Call" onClick={() => setView("call")} ariaLabel={`Call ${otherName}`} />
+  ) : null;
+  const changePriceRow = (
+    <PickRow
+      key="price"
+      label="Change price"
+      onClick={() => { setNewPrice(""); setLError(null); setView("price"); }}
+      ariaLabel="Change the price"
+    />
   );
-
-  const problemLink = problemStatuses.includes(job.status) && (isCustomer || isWorker) && (
+  const problemRow = problemStatuses.includes(job.status) && (isCustomer || isWorker) ? (
     job.problemReported ? (
-      <p className="text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
+      <p key="problem" className="py-1 text-center text-base font-bold" style={{ color: "var(--danger)" }}>Problem reported</p>
     ) : (
-      <button type="button" disabled={lBusy} onClick={() => runLifecycle("problem")} className="py-2 text-base font-bold disabled:opacity-40" style={{ color: "var(--danger)" }} aria-label="Report a problem with this job">
-        Problem
-      </button>
+      <PickRow
+        key="problem"
+        label="Problem"
+        danger
+        disabled={lBusy}
+        onClick={() => void runLifecycle("problem")}
+        ariaLabel="Report a problem with this job"
+      />
     )
+  ) : null;
+  const releaseRow = (
+    <PickRow
+      key="release"
+      label="Release job"
+      onClick={() => { onStatus(job, "open"); onBack(); }}
+      ariaLabel="Release this job back to the board"
+    />
   );
+  const cancelRow = (
+    <PickRow
+      key="cancel"
+      label={job.status === "open" ? "Cancel posting" : "Cancel job"}
+      danger
+      onClick={() => onStatus(job, "cancelled")}
+      ariaLabel={job.status === "open" ? "Cancel this posting" : "Cancel this job"}
+    />
+  );
+  const removeRow = (
+    <PickRow
+      key="remove"
+      label="Remove"
+      danger
+      onClick={() => { onDelete(job); onBack(); }}
+      ariaLabel="Remove this job"
+    />
+  );
+  const menuStack = (rows: (ReactNode | null | false)[]) => {
+    const shown = rows.filter(Boolean);
+    if (shown.length === 0) return null;
+    return <div className="mt-4 flex flex-col gap-2.5">{shown}</div>;
+  };
+
+  /* Declutter means absence, not smaller presence: an entry
+     shows only in the state where it is needed, and in every
+     other state it is not on the screen at all. Chat and Call
+     belong to the talk first state (chat is the call fallback
+     there). Change price belongs only to the worker's confirm
+     step. Problem belongs from the price step onward. Cancel
+     belongs while the job can still be called off, Release
+     while the worker can still hand it back, Remove only to a
+     cancelled job. A finished job shows none of them. */
+  const customerRows: (ReactNode | null | false)[] = !isCustomer
+    ? []
+    : job.status === "open"
+      ? [cancelRow]
+      : job.status === "accepted"
+        ? [chatRow, callRow, cancelRow]
+        : job.status === "price_proposed"
+          ? [problemRow]
+          : job.status === "confirmed" || job.status === "held"
+            ? [problemRow, cancelRow]
+            : job.status === "in_progress" || job.status === "worker_done"
+              ? [problemRow]
+              : job.status === "cancelled"
+                ? [removeRow]
+                : [];
+  const workerRows: (ReactNode | null | false)[] = isCustomer || !isWorker
+    ? []
+    : job.status === "accepted"
+      ? [chatRow, changePriceRow, releaseRow]
+      : job.status === "confirmed"
+        ? [problemRow, releaseRow]
+        : problemStatuses.includes(job.status)
+          ? [problemRow]
+          : [];
 
   const stateLine = (text: string) => (
     <p className="text-center text-lg font-extrabold leading-relaxed text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{text}</p>
@@ -3927,25 +4045,7 @@ function JobScreen({
         </div>
       )}
 
-      {isCustomer && (job.status === "open" || job.status === "accepted" || job.status === "price_proposed" || job.status === "confirmed" || job.status === "held" || job.status === "worker_done") && (
-        <>
-          {linkRow}
-          <div className="mt-1 flex items-center justify-center gap-6">
-            {problemLink}
-            {(job.status === "open" || job.status === "accepted" || job.status === "confirmed" || job.status === "held") && (
-              <button type="button" onClick={() => onStatus(job, "cancelled")} className="py-2 text-base font-bold" style={{ color: "var(--danger)" }} aria-label={job.status === "open" ? "Cancel this posting" : "Cancel this job"}>
-                {job.status === "open" ? "Cancel posting" : "Cancel job"}
-              </button>
-            )}
-          </div>
-        </>
-      )}
-      {isCustomer && job.status === "completed" && linkRow}
-      {isCustomer && job.status === "cancelled" && (
-        <button type="button" onClick={() => { onDelete(job); onBack(); }} className="mt-3 w-full py-3 text-base font-bold text-[var(--dim)]" aria-label="Remove this job">
-          Remove
-        </button>
-      )}
+      {isCustomer && menuStack(customerRows)}
 
       {isWorker && !isCustomer && job.status === "accepted" && (
         <>
@@ -3973,23 +4073,7 @@ function JobScreen({
             {lBusy ? "Confirming..." : "We talked, I understand the job, I can do it"}
           </button>
           {lError && <p className="mt-2 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{lError}</p>}
-          <div className="mt-2 flex items-center justify-center gap-6">
-            <button type="button" onClick={() => setView("details")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="See the job details">
-              Job details
-            </button>
-            <button type="button" onClick={() => setView("chat")} className="py-2 text-base font-bold text-[var(--dim)]" aria-label={`Chat with ${otherName}`}>
-              Chat
-            </button>
-            <button type="button" onClick={() => { setNewPrice(""); setLError(null); setView("price"); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Change the price">
-              Change price
-            </button>
-          </div>
-          <div className="mt-1 flex items-center justify-center gap-6">
-            {problemLink}
-            <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
-              Release job
-            </button>
-          </div>
+
         </>
       )}
 
@@ -4025,21 +4109,11 @@ function JobScreen({
               )}
             </div>
           )}
-          {(job.status === "price_proposed" || job.status === "confirmed" || job.status === "held" || job.status === "in_progress" || job.status === "worker_done" || job.status === "completed") && (
-            <>
-              {linkRow}
-              <div className="mt-1 flex items-center justify-center gap-6">
-                {problemLink}
-                {job.status === "confirmed" && (
-                  <button type="button" onClick={() => { onStatus(job, "open"); onBack(); }} className="py-2 text-base font-bold text-[var(--dim)]" aria-label="Release this job back to the board">
-                    Release job
-                  </button>
-                )}
-              </div>
-            </>
-          )}
+
         </>
       )}
+
+      {isWorker && !isCustomer && menuStack(workerRows)}
     </Screen>
   );
 }
@@ -4412,6 +4486,8 @@ export function App() {
   });
   const [notice, setNotice] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<number | null>(null);
+  const [jobView, setJobView] = useState<JobRouteView>("main");
+  const [pendingRoute, setPendingRoute] = useState<{ jobId: number; view: JobRouteView } | null>(null);
   const [jobReturn, setJobReturn] = useState<"myjobs" | "board" | "notifications">("myjobs");
   const [rateTarget, setRateTarget] = useState<{ job: Job; side: "worker" | "customer" } | null>(null);
   const [callInReturn, setCallInReturn] = useState<"signin" | "start">("signin");
@@ -4505,6 +4581,48 @@ export function App() {
   const openJob = useMemo(() => jobs.find((j) => j.id === openJobId) ?? null, [jobs, openJobId]);
   const needsSetup = !!profile && !profile.county && profile.location.trim().length < 2;
 
+  /* A tapped phone notification arrives two ways: as a ?job=
+     link when the app was closed, or as a jw-route message from
+     the service worker when it was already open. Both wait here
+     until the profile and the job list are in, then open
+     exactly that job, in exactly the view its kind calls for. */
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const jobParam = q.get("job");
+      if (jobParam && Number.isInteger(Number(jobParam))) {
+        const viewParam = q.get("view");
+        setPendingRoute({
+          jobId: Number(jobParam),
+          view: viewParam === "chat" ? "chat" : viewParam === "call" ? "call" : "main",
+        });
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch { /* no link to read */ }
+    if ("serviceWorker" in navigator) {
+      const onMsg = (e: MessageEvent) => {
+        const d = e.data as { type?: string; jobId?: number | null; kind?: string | null } | null;
+        if (d && d.type === "jw-route" && d.jobId != null) {
+          setPendingRoute({ jobId: d.jobId, view: routeViewForKind(d.kind ?? "") });
+        }
+      };
+      navigator.serviceWorker.addEventListener("message", onMsg);
+      return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingRoute || !profile) return;
+    const j = jobs.find((x) => x.id === pendingRoute.jobId);
+    if (j) {
+      goToJob(j, "notifications", pendingRoute.view);
+      setPendingRoute(null);
+    } else if (jobsQ.data) {
+      setPendingRoute(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRoute, profile, jobs]);
+
   function rememberPhone(phone: string, sessionToken: string) {
     setStoredPhone(phone);
     setStoredToken(sessionToken);
@@ -4527,9 +4645,10 @@ export function App() {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
   }
-  function goToJob(job: Job, from: "myjobs" | "board" | "notifications") {
+  function goToJob(job: Job, from: "myjobs" | "board" | "notifications", view: JobRouteView = "main") {
     setOpenJobId(job.id);
     setJobReturn(from);
+    setJobView(view);
     setScreen("job");
   }
 
@@ -4754,9 +4873,10 @@ export function App() {
           <NotificationsFlow
             sessionToken={storedToken}
             onBack={() => setScreen("start")}
-            onOpenJob={(jobId) => {
-              const j = jobs.find((x) => x.id === jobId);
-              if (j) goToJob(j, "notifications");
+            onOpenNotification={(n) => {
+              if (n.jobId == null) return;
+              const j = jobs.find((x) => x.id === n.jobId);
+              if (j) goToJob(j, "notifications", routeViewForKind(n.kind));
             }}
           />
         )}
@@ -4808,6 +4928,7 @@ export function App() {
               onRate={(job, side) => { setRateTarget({ job, side }); setScreen("rate"); }}
               onAccept={handleAccept}
               onLifecycle={handleLifecycle}
+              initialView={jobView}
             />
           ) : (
             <Screen title="That job is gone" onBack={() => setScreen(jobReturn)}>

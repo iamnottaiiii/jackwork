@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionsModule } from "@hatch/space-sdk";
-import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 const jobShape = z.object({
@@ -122,6 +122,10 @@ type ProfileRow = typeof schema.profiles.$inferSelect;
     a problem within this window after the worker marks the job done,
     the job completes automatically and the simulated payout shows. */
 const AUTO_CONFIRM_MS = 24 * 60 * 60 * 1000;
+/* A ring lives this long. After it, the ring is a missed call:
+   its rows are swept away and no client may show it as a call
+   happening now. */
+const RING_FRESH_MS = 45000;
 
 /**
  * The owner's own phone number. It is the only number the separate
@@ -346,10 +350,39 @@ async function notifyJobEvent(ctx: any, profileId: number | null | undefined, jo
     }
     const subs = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.profileId, profileId));
     for (const s of subs) {
-      await sendWebPush(ctx, s, JSON.stringify({ text, jobId: job.id }));
+      await sendWebPush(ctx, s, JSON.stringify({ text, jobId: job.id, kind }));
     }
   } catch {
     /* Notifications never break the job action that caused them. */
+  }
+}
+
+/** Deletes a job's dead call rows: the newest ring that nobody
+    answered, declined, or ended within RING_FRESH_MS, and every
+    row that came with it. Runs when signals are read and when a
+    new ring is sent, so a stale ring can never resurface as a
+    call happening now. Resolved calls are left alone. */
+async function sweepExpiredRings(ctx: any, jobId: number): Promise<void> {
+  const db = ctx.db();
+  for (let pass = 0; pass < 10; pass++) {
+    const rows = await db
+      .select()
+      .from(schema.callSignals)
+      .where(eq(schema.callSignals.jobId, jobId))
+      .orderBy(asc(schema.callSignals.id));
+    let lastRing: (typeof rows)[number] | null = null;
+    for (const r of rows) if (r.kind === "ring") lastRing = r;
+    if (!lastRing) return;
+    const ring = lastRing;
+    const resolved = rows.some(
+      (r: { id: number; kind: string }) => r.id > ring.id && (r.kind === "accept" || r.kind === "decline" || r.kind === "end"),
+    );
+    if (resolved) return;
+    const created = ring.createdAt instanceof Date ? ring.createdAt.getTime() : new Date(ring.createdAt as any).getTime();
+    if (Date.now() - created <= RING_FRESH_MS) return;
+    await db
+      .delete(schema.callSignals)
+      .where(and(eq(schema.callSignals.jobId, jobId), gte(schema.callSignals.id, ring.id)));
   }
 }
 
@@ -1783,6 +1816,7 @@ export const Actions = {
       const poster = isPoster(job, actor);
       const worker = isWorker(job, actor);
       if (!poster && !worker) return { ok: false, error: "Only the two people on this job can call on it." };
+      if (args.kind === "ring") await sweepExpiredRings(ctx, args.jobId);
       const inserted = await db
         .insert(schema.callSignals)
         .values({ jobId: args.jobId, fromProfileId: actor.id, kind: args.kind, payload: args.payload ?? null })
@@ -1820,6 +1854,7 @@ export const Actions = {
       const job = await jobForId(ctx, args.jobId);
       if (!job || !job.providerId) return { signals: [] };
       if (!isPoster(job, actor) && !isWorker(job, actor)) return { signals: [] };
+      await sweepExpiredRings(ctx, args.jobId);
       const since = args.sinceId ?? 0;
       const rows = await db
         .select()
@@ -1901,6 +1936,31 @@ export const Actions = {
         .set({ readAt: new Date() })
         .where(and(eq(schema.notifications.profileId, actor.id), isNull(schema.notifications.readAt)));
       return { notifications, vapidPublicKey: vapidKeys()?.publicKey ?? null };
+    },
+  }),
+
+  markNotificationRead: defineAction({
+    description: "Marks one of the signed-in person's notifications read, when they tap it. Only their own rows, proven by the session token.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+      notificationId: z.number().int().positive(),
+    }),
+    response: z.object({ ok: z.boolean() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false };
+      await db
+        .update(schema.notifications)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            eq(schema.notifications.id, args.notificationId),
+            eq(schema.notifications.profileId, actor.id),
+            isNull(schema.notifications.readAt),
+          ),
+        );
+      return { ok: true };
     },
   }),
 
