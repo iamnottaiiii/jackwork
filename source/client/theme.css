@@ -130,8 +130,7 @@
     min-height: 2.25rem;
   }
   html, body { height: 100%; overscroll-behavior: none; }
-  html { background: var(--bg); }
-  body { font-family: var(--font-body); }
+  body { font-family: var(--font-body); background: var(--bg); }
   /* Soft red washes behind everything — the background design
      gradient — so the translucent glass fills have something to
      blur and read as real glass. Same smoothing red family as the

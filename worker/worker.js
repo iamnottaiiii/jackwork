@@ -1521,6 +1521,15 @@ const Actions = {
     return { ok: true };
   },
 
+  async deleteNotification(env, args) {
+    const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
+    const notificationId = reqId(args.notificationId, "notificationId");
+    const actor = await actorForToken(env, sessionToken);
+    if (!actor) return { ok: false };
+    await runSql(env, "DELETE FROM notifications WHERE id = ? AND profile_id = ?", [notificationId, actor.id]);
+    return { ok: true };
+  },
+
   async savePushSubscription(env, args) {
     const sessionToken = reqStr(args.sessionToken, "sessionToken", 10, 300);
     const endpoint = reqStr(args.endpoint, "endpoint", 10, 2000);

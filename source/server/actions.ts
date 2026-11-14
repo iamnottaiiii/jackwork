@@ -1964,6 +1964,29 @@ export const Actions = {
     },
   }),
 
+  deleteNotification: defineAction({
+    description: "Deletes one of the signed-in person's notifications, for good, when they tap the trash on it. Only their own rows, proven by the session token.",
+    request: z.object({
+      sessionToken: z.string().min(10).max(300),
+      notificationId: z.number().int().positive(),
+    }),
+    response: z.object({ ok: z.boolean() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const actor = await actorForToken(ctx, args.sessionToken);
+      if (!actor) return { ok: false };
+      await db
+        .delete(schema.notifications)
+        .where(
+          and(
+            eq(schema.notifications.id, args.notificationId),
+            eq(schema.notifications.profileId, actor.id),
+          ),
+        );
+      return { ok: true };
+    },
+  }),
+
   savePushSubscription: defineAction({
     description: "Saves the person's Web Push subscription for this browser or installed app, so job notifications also arrive as phone notifications.",
     request: z.object({

@@ -921,6 +921,7 @@ function I({ d, size = 18 }: { d: string; size?: number }) {
 const PinIcon = () => <I d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />;
 const PhoneIcon = () => <I d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.34 1.79.66 2.64a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.44-1.23a2 2 0 0 1 2.11-.45c.85.32 1.74.54 2.64.66A2 2 0 0 1 22 16.92z" />;
 const BellIcon = () => <I d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0" />;
+const TrashIcon = () => <I d="M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6" />;
 const ShieldIcon = () => <I d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10Z M9 11.5l2 2 4-4.5" />;
 const BackIcon = () => <I d="M19 12H5 M11 6l-6 6 6 6" />;
 const CheckIcon = () => <I d="M20 6 9 17l-5-5" size={22} />;
@@ -1185,7 +1186,7 @@ const glassBtnStyle = { borderRadius: 12, fontFamily: "var(--font-display)" } as
 /** One tappable row in a pick list (county, district, town, task...).
     A row the person already picked fills with the red selection
     highlight, like every other picked state in the app. */
-function PickRow({ label, sub, icon, onClick, ariaLabel, selected, danger, disabled }: { label: string; sub?: string; icon?: ReactNode; onClick: () => void; ariaLabel?: string; selected?: boolean; danger?: boolean; disabled?: boolean }) {
+function PickRow({ label, sub, icon, onClick, ariaLabel, selected, danger, disabled, check }: { label: string; sub?: string; icon?: ReactNode; onClick: () => void; ariaLabel?: string; selected?: boolean; danger?: boolean; disabled?: boolean; check?: boolean }) {
   const labelColor = danger ? "var(--danger)" : selected ? "var(--select-ink)" : "var(--text)";
   return (
     <button
@@ -1201,7 +1202,15 @@ function PickRow({ label, sub, icon, onClick, ariaLabel, selected, danger, disab
         <span className="block text-lg font-extrabold leading-tight" style={{ fontFamily: "var(--font-display)", color: labelColor }}>{label}</span>
         {sub && <span className="block text-sm font-semibold" style={{ color: selected ? "var(--select-ink)" : "var(--dim)", opacity: selected ? 0.85 : 1 }}>{sub}</span>}
       </span>
-      <span style={{ color: labelColor === "var(--danger)" ? "var(--danger)" : selected ? "var(--select-ink)" : "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
+      {check !== undefined ? (
+        <span className="flex shrink-0 items-center justify-center" style={{ width: 26, height: 26, borderRadius: 7, border: "2px solid " + (check ? "var(--select-ink)" : "var(--dim)"), background: check ? "var(--select-ink)" : "transparent" }} aria-hidden="true">
+          {check && (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--select)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          )}
+        </span>
+      ) : (
+        <span style={{ color: labelColor === "var(--danger)" ? "var(--danger)" : selected ? "var(--select-ink)" : "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
+      )}
     </button>
   );
 }
@@ -2116,6 +2125,12 @@ function NotificationsFlow({
     refetchInterval: 8000,
   });
   const items = notifQ.data?.notifications ?? [];
+  const queryClient = useQueryClient();
+  async function deleteOne(id: number) {
+    await api.deleteNotification({ sessionToken, notificationId: id }).catch(() => {});
+    await queryClient.invalidateQueries({ queryKey: ["notifications", sessionToken] });
+    await queryClient.invalidateQueries({ queryKey: ["unread-notifications"] });
+  }
   const vapidPublicKey = notifQ.data?.vapidPublicKey ?? null;
   const [pushState, setPushState] = useState<"unknown" | "unsupported" | "ready" | "on" | "busy" | "denied">("unknown");
 
@@ -2183,30 +2198,43 @@ function NotificationsFlow({
       ) : (
         <div className="flex flex-col gap-2.5">
           {items.map((n) => (
-            <button
+            <div
               key={n.id}
-              type="button"
-              disabled={n.jobId == null}
-              onClick={() => {
-                if (n.jobId == null) return;
-                void api.markNotificationRead({ sessionToken, notificationId: n.id }).catch(() => {});
-                onOpenNotification(n);
-              }}
-              className="glass flex w-full items-center gap-3 px-5 py-4 text-left active:opacity-80 disabled:opacity-60"
+              className="glass flex w-full items-center gap-3 px-5 py-4"
               style={{ borderRadius: 12, minHeight: 64 }}
-              aria-label={n.text}
             >
-              {n.unread && (
-                <span className="shrink-0" style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--select)" }} aria-hidden="true" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block text-base font-bold leading-snug text-[var(--text)]">{n.text}</span>
-                <span className="mt-0.5 block text-sm font-semibold text-[var(--dim)]">{new Date(n.createdAt).toLocaleString()}</span>
-              </span>
-              {n.jobId != null && (
-                <span style={{ color: "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={n.jobId == null}
+                onClick={() => {
+                  if (n.jobId == null) return;
+                  void api.markNotificationRead({ sessionToken, notificationId: n.id }).catch(() => {});
+                  onOpenNotification(n);
+                }}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left active:opacity-80 disabled:opacity-60"
+                aria-label={n.text}
+              >
+                {n.unread && (
+                  <span className="shrink-0" style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--select)" }} aria-hidden="true" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-bold leading-snug text-[var(--text)]">{n.text}</span>
+                  <span className="mt-0.5 block text-sm font-semibold text-[var(--dim)]">{new Date(n.createdAt).toLocaleString()}</span>
+                </span>
+                {n.jobId != null && (
+                  <span style={{ color: "var(--dim)" }} aria-hidden="true"><ChevronIcon /></span>
+                )}
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete notification: ${n.text}`}
+                onClick={() => void deleteOne(n.id)}
+                className="flex shrink-0 items-center justify-center text-[var(--dim)] active:opacity-70"
+                style={{ width: 40, height: 40 }}
+              >
+                <TrashIcon />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -3011,6 +3039,7 @@ function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: stri
                   label={sv.name}
                   icon={<ServiceIcon icon={sv.icon} size={28} />}
                   selected={on}
+                  check={on}
                   onClick={() => onToggle(sv.name)}
                   ariaLabel={`${on ? "Remove" : "Add"} ${sv.name} to the work I want`}
                 />
@@ -3160,7 +3189,7 @@ function BoardFlow({
       setPrefsSel(sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name]);
     return (
       <Screen title="Categories" onBack={() => setShowCats(false)} layout="top">
-        <p className="mb-4 text-base font-semibold text-[var(--dim)]">Tap the work you want. It comes first, one job at a time. All jobs still come up.</p>
+        <p className="mb-4 text-base font-semibold text-[var(--dim)]">Pick the work you can do</p>
         <WorkKindsGrid sel={sel} onToggle={toggle} />
         {/* Normal flow at the end of the list — NOT pinned to the
             bottom of the screen. A pinned solid band here was the
@@ -4742,6 +4771,7 @@ export function App() {
   return (
     <div
       className="flex min-h-dvh w-full flex-col text-[var(--text)]"
+      style={{ backgroundColor: "var(--bg)", backgroundImage: "radial-gradient(65% 42% at 12% 6%, var(--glow-1), transparent 70%),radial-gradient(55% 38% at 88% 88%, var(--glow-2), transparent 70%),radial-gradient(75% 48% at 50% 44%, var(--glow-3), transparent 72%),radial-gradient(45% 32% at 22% 82%, var(--glow-4), transparent 70%)" }}
     >
       <main className="flex w-full flex-1 flex-col px-4 pb-5 pt-4 sm:px-6 lg:px-10">
         {notice && screen !== "board" && (
