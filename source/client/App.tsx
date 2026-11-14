@@ -1151,7 +1151,7 @@ function BigChoice({
       }}
     >
       {icon && (
-        <span className="flex shrink-0 items-center justify-center" style={{ width: 56, height: 56, borderRadius: 12, background: primary ? "var(--yellow-ink)" : "var(--text)", color: primary ? "var(--yellow)" : "var(--bg)" }} aria-hidden="true">
+        <span className="flex shrink-0 items-center justify-center" style={{ width: 56, height: 56, borderRadius: 12, background: "transparent", color: primary ? "var(--yellow-ink)" : "var(--text)", border: primary ? "1.5px solid var(--yellow-ink)" : "1.5px solid var(--text)" }} aria-hidden="true">
           {icon}
         </span>
       )}
@@ -2440,7 +2440,7 @@ function PostWizard({
     return (
       <Screen title="Your job is live">
         <div className="flex flex-col items-center">
-          <span className="flex items-center justify-center" style={{ width: 84, height: 84, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
+          <span className="flex items-center justify-center" style={{ width: 84, height: 84, borderRadius: 12, background: "transparent", color: "var(--text)", border: "1.5px solid var(--text)" }} aria-hidden="true">
             <CheckIcon />
           </span>
           <button type="button" onClick={onPosted} className="mt-8 w-full py-4 text-xl font-black" style={primaryBtnStyle} aria-label="See my jobs">
@@ -2537,8 +2537,8 @@ function PostWizard({
                 style={{ borderRadius: 12, minHeight: 132 }}
                 aria-label={`Pick ${g.name}`}
               >
-                <span className="flex items-center justify-center" style={{ width: 60, height: 60, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
-                  <ServiceIcon icon={g.icon} size={34} color="var(--bg)" />
+                <span className="flex items-center justify-center" style={{ width: 60, height: 60, borderRadius: 12, background: "transparent", color: "var(--text)", border: "1.5px solid var(--text)" }} aria-hidden="true">
+                  <ServiceIcon icon={g.icon} size={34} color="var(--text)" />
                 </span>
                 <span className="text-base font-extrabold leading-tight text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{g.name}</span>
               </button>
@@ -2923,8 +2923,8 @@ function PostWizard({
       {activeService && (
         <div className="glass p-5" style={{ borderRadius: 12 }}>
           <div className="flex flex-col items-center text-center">
-            <span className="flex items-center justify-center" style={{ width: 76, height: 76, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
-              <ServiceIcon icon={activeService.icon} size={42} color="var(--bg)" />
+            <span className="flex items-center justify-center" style={{ width: 76, height: 76, borderRadius: 12, background: "transparent", color: "var(--text)", border: "1.5px solid var(--text)" }} aria-hidden="true">
+              <ServiceIcon icon={activeService.icon} size={42} color="var(--text)" />
             </span>
             <p className="mt-3 text-2xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{task ?? `${activeService.name} needed`}</p>
             <p className="mt-1 text-base font-semibold text-[var(--dim)]">{activeService.name} · {profile.fullName}</p>
@@ -3309,8 +3309,8 @@ function MyJobsFlow({
               style={{ borderRadius: 12, minHeight: 72 }}
               aria-label={`Open job: ${j.title}, ${statusLabel(j.status)}, on ${scheduleLabel(j)}`}
             >
-              <span className="flex shrink-0 items-center justify-center" style={{ width: 48, height: 48, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
-                <ServiceIcon icon={serviceOf(j.category)?.icon ?? "toolbox"} size={26} color="var(--bg)" />
+              <span className="flex shrink-0 items-center justify-center" style={{ width: 48, height: 48, borderRadius: 12, background: "transparent", color: "var(--text)", border: "1.5px solid var(--text)" }} aria-hidden="true">
+                <ServiceIcon icon={serviceOf(j.category)?.icon ?? "toolbox"} size={26} color="var(--text)" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-lg font-extrabold text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{j.title}</span>
@@ -4407,7 +4407,7 @@ function ProfileFlow({
     <Screen title="My ID" onBack={() => setPart("menu")}>
       {verified ? (
         <div className="text-center">
-          <span className="inline-flex items-center justify-center" style={{ width: 84, height: 84, borderRadius: 12, background: "var(--text)", color: "var(--bg)" }} aria-hidden="true">
+          <span className="inline-flex items-center justify-center" style={{ width: 84, height: 84, borderRadius: 12, background: "transparent", color: "var(--text)", border: "1.5px solid var(--text)" }} aria-hidden="true">
             <ShieldIcon />
           </span>
           <p className="mx-auto mt-4 max-w-sm text-base leading-relaxed text-[var(--dim)]">
