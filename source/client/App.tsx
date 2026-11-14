@@ -4717,14 +4717,6 @@ export function App() {
   return (
     <div
       className="flex min-h-dvh w-full flex-col text-[var(--text)]"
-      style={{
-        backgroundColor: "var(--bg)",
-        backgroundImage:
-          "radial-gradient(65% 42% at 12% 6%, var(--glow-1), transparent 70%)," +
-          "radial-gradient(55% 38% at 88% 88%, var(--glow-2), transparent 70%)," +
-          "radial-gradient(75% 48% at 50% 44%, var(--glow-3), transparent 72%)," +
-          "radial-gradient(45% 32% at 22% 82%, var(--glow-4), transparent 70%)",
-      }}
     >
       <main className="flex w-full flex-1 flex-col px-4 pb-5 pt-4 sm:px-6 lg:px-10">
         {notice && screen !== "board" && (

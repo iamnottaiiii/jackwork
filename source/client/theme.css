@@ -129,8 +129,9 @@
   button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) {
     min-height: 2.25rem;
   }
-  html, body { height: 100%; }
-  body { font-family: var(--font-body); background: var(--bg); }
+  html, body { height: 100%; overscroll-behavior: none; }
+  html { background: var(--bg); }
+  body { font-family: var(--font-body); }
   /* Soft red washes behind everything — the background design
      gradient — so the translucent glass fills have something to
      blur and read as real glass. Same smoothing red family as the
@@ -145,7 +146,7 @@
     background:
       radial-gradient(65% 42% at 12% 6%, var(--glow-1), transparent 70%),
       radial-gradient(55% 38% at 88% 88%, var(--glow-2), transparent 70%),
-      radial-gradient(40% 30% at 78% 22%, var(--glow-3), transparent 70%),
+      radial-gradient(75% 48% at 50% 44%, var(--glow-3), transparent 72%),
       radial-gradient(45% 32% at 22% 82%, var(--glow-4), transparent 70%);
   }
   .font-display { font-family: var(--font-display); }
