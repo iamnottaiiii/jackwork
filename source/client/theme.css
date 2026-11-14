@@ -214,3 +214,43 @@
      in the middle too. */
   .center-screen .field { text-align: center; }
 }
+
+/* Looking for jobs: a calm radar on the Find work board while no job
+   is showing. Three rings in the selection red expand from the
+   center and fade out, slow and smooth, staggered so one is always
+   on its way out. The steady center disc is plain markup in
+   App.tsx (var(--select) fill with the search icon on top). */
+@keyframes looking-ring {
+  0% { transform: scale(0.22); opacity: 0.85; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.looking-radar {
+  position: relative;
+  width: 176px;
+  height: 176px;
+}
+.looking-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--select);
+  opacity: 0;
+  animation: looking-ring 2.4s ease-out infinite;
+}
+.looking-ring-2 { animation-delay: 0.8s; }
+.looking-ring-3 { animation-delay: 1.6s; }
+
+/* A job arriving on the board pops in the way an Uber request does:
+   it rises, grows a touch, and fades in, once, when it appears. */
+@keyframes job-pop {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.job-pop { animation: job-pop 350ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .looking-ring { animation: none; opacity: 0.35; }
+  .looking-ring-2 { transform: scale(0.68); }
+  .looking-ring-3 { transform: scale(0.42); }
+  .job-pop { animation: none; }
+}

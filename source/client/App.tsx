@@ -1077,12 +1077,14 @@ function Screen({
   onBack,
   layout = "center",
   brand,
+  topRight,
   children,
 }: {
   title: string;
   onBack?: () => void;
   layout?: "center" | "top";
   brand?: boolean;
+  topRight?: ReactNode;
   children: ReactNode;
 }) {
   const backRow = (
@@ -1100,7 +1102,14 @@ function Screen({
     return (
       <div className="flex w-full flex-1 flex-col">
         <div className="mx-auto flex w-full max-w-[880px] flex-1 flex-col">
-          {backRow}
+          {topRight ? (
+            <div className="flex items-start justify-between">
+              {backRow}
+              <div className="shrink-0">{topRight}</div>
+            </div>
+          ) : (
+            backRow
+          )}
           <h1 className="mt-1 text-center text-[30px] font-black leading-tight text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{title}</h1>
           <div className="mt-6 flex flex-col pb-4 [&>form]:flex [&>form]:flex-col">{children}</div>
         </div>
@@ -2989,32 +2998,22 @@ function areaLabel(poster: PlaceFields | null, me: PlaceFields): string | null {
    ask. Same groups, same chips, same red picked style in both. */
 function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: string) => void }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {SERVICE_GROUPS.map((g) => (
         <div key={g.name}>
-          <p className="mb-2 text-center text-base font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{g.name}</p>
-          <div className="flex flex-wrap justify-center gap-2">
+          <p className="mb-2 text-base font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{g.name}</p>
+          <div className="flex flex-col gap-2.5">
             {g.services.map((sv) => {
               const on = sel.includes(sv.name);
               return (
-                <button
+                <PickRow
                   key={sv.name}
-                  type="button"
+                  label={sv.name}
+                  icon={<ServiceIcon icon={sv.icon} size={28} />}
+                  selected={on}
                   onClick={() => onToggle(sv.name)}
-                  aria-pressed={on}
-                  aria-label={`${on ? "Remove" : "Add"} ${sv.name} to the work I want`}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-base font-bold"
-                  style={{
-                    borderRadius: 12,
-                    background: on ? "var(--select)" : "var(--glass)",
-                    color: on ? "var(--select-ink)" : "var(--text)",
-                    border: "1.5px solid var(--glass-border)",
-                    ...selectStyle(on),
-                  }}
-                >
-                  <ServiceIcon icon={sv.icon} size={18} color={on ? "var(--select-ink)" : "var(--text)"} />
-                  {sv.name}
-                </button>
+                  ariaLabel={`${on ? "Remove" : "Add"} ${sv.name} to the work I want`}
+                />
               );
             })}
           </div>
@@ -3035,6 +3034,29 @@ function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: stri
    is hidden. Category picking lives here in Find work, not in
    the profile.
    ================================================================ */
+/* Find work waiting state: while no job is showing, the board is
+   looking, with a calm red radar, instead of a dead line of text.
+   A job that arrives pops in on its own (the job-pop class). */
+function LookingForJobs() {
+  return (
+    <div className="mt-10 flex flex-col items-center px-2 text-center">
+      <div className="looking-radar" aria-hidden="true">
+        <span className="looking-ring" />
+        <span className="looking-ring looking-ring-2" />
+        <span className="looking-ring looking-ring-3" />
+        <span
+          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          style={{ width: 64, height: 64, borderRadius: 9999, background: "var(--select)", boxShadow: "var(--select-glow)" }}
+        >
+          <ServiceIcon icon="search" size={30} color="var(--select-ink)" />
+        </span>
+      </div>
+      <p className="mt-6 text-2xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Looking for jobs</p>
+      <p className="mt-2 max-w-[300px] text-base font-semibold text-[var(--dim)]">New jobs pop up here the moment someone posts one.</p>
+    </div>
+  );
+}
+
 function BoardFlow({
   profile,
   openJobs,
@@ -3138,7 +3160,7 @@ function BoardFlow({
       setPrefsSel(sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name]);
     return (
       <Screen title="Categories" onBack={() => setShowCats(false)} layout="top">
-        <p className="mb-4 text-center text-base font-semibold text-[var(--dim)]">Tap the work you want. It comes first, one job at a time. All jobs still come up.</p>
+        <p className="mb-4 text-base font-semibold text-[var(--dim)]">Tap the work you want. It comes first, one job at a time. All jobs still come up.</p>
         <WorkKindsGrid sel={sel} onToggle={toggle} />
         {/* Normal flow at the end of the list — NOT pinned to the
             bottom of the screen. A pinned solid band here was the
@@ -3191,15 +3213,26 @@ function BoardFlow({
   }
 
   return (
-    <Screen title="Find work" onBack={onExit} layout="top">
-      {loading && !current ? (
-        <p className="mt-6 text-center text-base font-semibold text-[var(--dim)]">Loading jobs...</p>
-      ) : !current ? (
-        <p className="mt-6 text-center text-base font-semibold text-[var(--dim)]">
-          No open jobs right now. New jobs appear here on their own as people post them.
-        </p>
+    <Screen
+      title="Find work"
+      onBack={onExit}
+      layout="top"
+      topRight={
+        <button
+          type="button"
+          onClick={() => { setPrefsSel(null); setShowCats(true); }}
+          aria-label={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
+          className="flex items-center justify-center text-[var(--text)] active:opacity-70"
+          style={{ width: 44, height: 44, fontSize: 26, lineHeight: 1, background: "transparent", border: "none" }}
+        >
+          {"⋮"}
+        </button>
+      }
+    >
+      {!current ? (
+        <LookingForJobs />
       ) : (
-        <div className="flex flex-col">
+        <div key={current.id} className="job-pop flex flex-col">
           <JobFacts job={current} profile={profile} publicView />
           {takeNote && (
             <p className="mt-3 text-center text-base font-semibold" style={{ color: "var(--danger)" }}>{takeNote}</p>
@@ -3225,14 +3258,6 @@ function BoardFlow({
               Next job
             </button>
           )}
-          <div className="mt-2.5">
-            <PickRow
-              label="Categories"
-              sub={prefs.length > 0 ? `${prefs.length} kinds of work picked` : "Pick the work you want"}
-              onClick={() => { setPrefsSel(null); setShowCats(true); }}
-              ariaLabel={prefs.length > 0 ? `Categories, ${prefs.length} kinds of work picked` : "Categories, pick the work you want"}
-            />
-          </div>
         </div>
       )}
     </Screen>
@@ -4537,7 +4562,7 @@ export function App() {
   const jobsQ = useQuery({
     queryKey: ["jobs", storedToken],
     queryFn: () => api.listJobs({ limit: 200, viewerSessionToken: storedToken || undefined }),
-    refetchInterval: 4000,
+    refetchInterval: 1000,
   });
   const unreadQ = useQuery({
     queryKey: ["unread-notifications", storedToken],
