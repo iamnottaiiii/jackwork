@@ -214,30 +214,29 @@
   .center-screen .field { text-align: center; }
 }
 
-/* Looking for jobs: a calm radar on the Find work board while no job
-   is showing. Three rings in the selection red expand from the
-   center and fade out, slow and smooth, staggered so one is always
-   on its way out. The steady center disc is plain markup in
-   App.tsx (var(--select) fill with the search icon on top). */
-@keyframes looking-ring {
-  0% { transform: scale(0.22); opacity: 0.85; }
-  100% { transform: scale(1); opacity: 0; }
+/* Looking for jobs: three dots bounce in turn under the words on
+   the Find work board while no job is showing (owner's pick,
+   2026-11-14). First and third dots are the text color, the middle
+   one is the selection red. Plain markup lives in App.tsx. */
+@keyframes looking-dot {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-11px); }
 }
-.looking-radar {
-  position: relative;
-  width: 176px;
-  height: 176px;
+.looking-dots {
+  display: flex;
+  gap: 9px;
+  justify-content: center;
+  margin-top: 16px;
 }
-.looking-ring {
-  position: absolute;
-  inset: 0;
+.looking-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 9999px;
-  border: 2px solid var(--select);
-  opacity: 0;
-  animation: looking-ring 2.4s ease-out infinite;
+  background: var(--text);
+  animation: looking-dot 1.2s ease-in-out infinite;
 }
-.looking-ring-2 { animation-delay: 0.8s; }
-.looking-ring-3 { animation-delay: 1.6s; }
+.looking-dot-2 { background: var(--select); animation-delay: 0.15s; }
+.looking-dot-3 { animation-delay: 0.3s; }
 
 /* A job arriving on the board pops in the way an Uber request does:
    it rises, grows a touch, and fades in, once, when it appears. */
@@ -248,8 +247,6 @@
 .job-pop { animation: job-pop 350ms ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .looking-ring { animation: none; opacity: 0.35; }
-  .looking-ring-2 { transform: scale(0.68); }
-  .looking-ring-3 { transform: scale(0.42); }
+  .looking-dot { animation: none; }
   .job-pop { animation: none; }
 }

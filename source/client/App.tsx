@@ -1112,7 +1112,7 @@ function Screen({
             backRow
           )}
           <h1 className="mt-1 text-center text-[30px] font-black leading-tight text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>{title}</h1>
-          <div className="mt-6 flex flex-col pb-4 [&>form]:flex [&>form]:flex-col">{children}</div>
+          <div className="mt-6 flex flex-1 flex-col pb-4 [&>form]:flex [&>form]:flex-col">{children}</div>
         </div>
       </div>
     );
@@ -3064,24 +3064,23 @@ function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: stri
    the profile.
    ================================================================ */
 /* Find work waiting state: while no job is showing, the board is
-   looking, with a calm red radar, instead of a dead line of text.
-   A job that arrives pops in on its own (the job-pop class). */
+   looking. The owner picked the bouncing dots look (2026-11-14) and
+   does not like the search icon, so there is no icon at all: the
+   words and three dots sit in the middle of the screen, and the
+   small sentence sits at the bottom of the screen. A job that
+   arrives pops in on its own (the job-pop class). */
 function LookingForJobs() {
   return (
-    <div className="mt-10 flex flex-col items-center px-2 text-center">
-      <div className="looking-radar" aria-hidden="true">
-        <span className="looking-ring" />
-        <span className="looking-ring looking-ring-2" />
-        <span className="looking-ring looking-ring-3" />
-        <span
-          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
-          style={{ width: 64, height: 64, borderRadius: 9999, background: "var(--select)", boxShadow: "var(--select-glow)" }}
-        >
-          <ServiceIcon icon="search" size={30} color="var(--select-ink)" />
-        </span>
+    <div className="flex flex-1 flex-col px-2">
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <p className="text-2xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Looking for jobs</p>
+        <div className="looking-dots" aria-hidden="true">
+          <span className="looking-dot" />
+          <span className="looking-dot looking-dot-2" />
+          <span className="looking-dot looking-dot-3" />
+        </div>
       </div>
-      <p className="mt-6 text-2xl font-black text-[var(--text)]" style={{ fontFamily: "var(--font-display)" }}>Looking for jobs</p>
-      <p className="mt-2 max-w-[300px] text-base font-semibold text-[var(--dim)]">New jobs pop up here the moment someone posts one.</p>
+      <p className="mx-auto max-w-[300px] pb-6 text-center text-xs font-semibold text-[var(--dim)]">New jobs pop up here the moment someone posts one.</p>
     </div>
   );
 }
