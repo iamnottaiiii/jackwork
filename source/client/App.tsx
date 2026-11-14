@@ -66,202 +66,233 @@ const SERVICE_GROUPS: { name: string; icon: string; services: Svc[] }[] = [
   {
     name: "Cleaning", icon: "sparkles",
     services: [
-      { name: "House cleaning", icon: "sparkles", keys: "clean house home maid sweep mop dirt housecleaning", tasks: ["Sweep + mop house", "Clean 1 room", "Clean the whole house", "Deep clean the whole house", "Clean fridge / stove", "Clean after moving out", "Move-in cleaning", "Move-out cleaning", "Home organization — arrange the house"] },
-      { name: "Deep cleaning", icon: "sparkles", keys: "deep clean party dirty scrub", tasks: ["Deep clean after party", "Deep clean the kitchen", "Deep clean the bathroom", "Deep clean before people come", "Clean a new house before moving in"] },
-      { name: "Laundry and ironing", icon: "washer", keys: "wash clothes iron laundry bag", tasks: ["Wash + iron clothes (per bag)", "Wash clothes only", "Iron clothes only", "Wash blankets and curtains", "Wash school uniforms", "Wash bedsheets and towels"] },
-      { name: "Dish washing", icon: "droplet", keys: "wash dishes plates event pots", tasks: ["Wash dishes for event", "Wash dishes at home", "Wash big pots and cooking things"] },
-      { name: "Carpet and windows", icon: "sparkles", keys: "carpet window glass clean porch", tasks: ["Carpet cleaning", "Window cleaning", "Wash the porch and yard", "Clean the shop windows"] },
-      { name: "Office cleaning", icon: "house", keys: "office shop clean daily weekly school church", tasks: ["Office cleaning (daily)", "Office cleaning (weekly)", "Clean a shop", "Clean a school or church"] },
+      { name: "House cleaning", icon: "sparkles", keys: "clean house home maid sweep mop dirt housecleaning", tasks: ["Sweep + mop house", "Clean 1 room", "Clean 2 rooms", "Clean the whole house", "Clean the kitchen and bathroom only", "Weekly house cleaning", "Clean the house before a party", "Clean the house after a party", "Clean fridge / stove", "Clean after moving out", "Move-in cleaning", "Move-out cleaning", "Clean the guest house", "Arrange and clean the store room", "Home organization, arrange the house"] },
+      { name: "Deep cleaning", icon: "sparkles", keys: "deep clean party dirty scrub", tasks: ["Deep clean the whole house", "Deep clean 1 room", "Deep clean after party", "Deep clean the kitchen", "Deep clean the bathroom", "Deep clean before people come", "Deep clean before a wedding or program", "Deep clean the store room", "Clean a new house before moving in"] },
+      { name: "Kitchen cleaning", icon: "sparkles", keys: "kitchen stove oven fridge cook clean grease", tasks: ["Clean the whole kitchen", "Clean the stove and oven", "Clean the fridge inside", "Clean the freezer inside", "Clean kitchen cabinets", "Wash the kitchen walls", "Clean the sink and counter"] },
+      { name: "Bathroom and toilet cleaning", icon: "droplet", keys: "bathroom toilet shower bath tiles clean scrub", tasks: ["Clean the bathroom", "Scrub the toilet and shower", "Clean the toilet", "Clean bathroom tiles", "Wash the bathroom floor", "Clean the sink and mirror", "Clean the guest bathroom"] },
+      { name: "Laundry and ironing", icon: "washer", keys: "wash clothes iron laundry bag", tasks: ["Wash + iron clothes (per bag)", "Wash clothes only", "Iron clothes only", "Iron and fold clothes", "Wash blankets and curtains", "Wash bedsheets and towels", "Wash school uniforms", "Wash baby clothes", "Wash work uniforms", "Wash curtains only", "Wash and hang clothes to dry"] },
+      { name: "Dish washing", icon: "droplet", keys: "wash dishes plates event pots", tasks: ["Wash dishes at home", "Wash dishes for event", "Wash dishes after a party", "Wash big pots and cooking things", "Wash pots for a cook shop", "Wash dishes for a wedding", "Wash and pack dishes after an event"] },
+      { name: "Carpet and windows", icon: "sparkles", keys: "carpet window glass clean porch rug louvre", tasks: ["Carpet cleaning", "Clean the rugs", "Window cleaning", "Clean windows inside and outside", "Clean glass doors", "Clean the louvre blades", "Beat and sun the carpets", "Clean the shop windows", "Wash the porch and yard"] },
+      { name: "Sofa and mattress cleaning", icon: "sparkles", keys: "sofa couch mattress chair cushion clean upholstery", tasks: ["Clean the sofa", "Clean the mattress", "Clean sofa and mattress", "Clean chairs and cushions", "Clean the living room chairs"] },
+      { name: "Floor cleaning", icon: "sparkles", keys: "floor mop polish scrub tiles veranda", tasks: ["Mop and polish the floor", "Scrub the floor", "Clean tile floors", "Wash the veranda floor", "Clean the steps", "Clean the store room floor"] },
+      { name: "Trash and compound cleaning", icon: "sparkles", keys: "trash garbage dirt yard compound sweep carry away", tasks: ["Carry the trash away", "Clean the yard trash", "Burn and clear the trash pile", "Clean the drainage in the compound", "Sweep the whole compound", "Clean after a party in the yard"] },
+      { name: "Office cleaning", icon: "house", keys: "office shop clean daily weekly bank restaurant hotel", tasks: ["Office cleaning (daily)", "Office cleaning (weekly)", "Clean a shop", "Clean a restaurant", "Clean a hotel or guest house", "Clean a bank office", "Clean the office bathrooms", "Empty the office trash and clean"] },
+      { name: "School and church cleaning", icon: "house", keys: "school church classroom clean program hall", tasks: ["Clean a school", "Clean a church", "Clean classrooms", "Clean the church hall", "Clean school bathrooms", "Arrange chairs and clean after a program"] },
+      { name: "Event cleaning", icon: "sparkles", keys: "event wedding funeral party program clean before after", tasks: ["Clean before an event", "Clean during an event", "Clean after a wedding", "Clean after a funeral", "Clean the event hall after the program"] },
+      { name: "After building cleaning", icon: "bricks", keys: "after building construction painting cement new house clean", tasks: ["Clean after building work", "Clean after painting", "Remove cement and paint stains", "Clean a new house before moving in", "Wash new tiles and floors", "Carry away building dirt"] },
     ],
   },
   {
     name: "Handyman", icon: "hammer",
     services: [
-      { name: "Furniture assembly", icon: "toolbox", keys: "assemble furniture bed wardrobe put together", tasks: ["Assemble a bed", "Assemble a wardrobe", "Assemble a table or chairs", "Assemble a shelf or cabinet", "Take furniture apart"] },
-      { name: "Door repairs", icon: "hammer", keys: "door hinge handle close broken", tasks: ["Fix a door that will not close", "Fix a door hinge", "Fix a broken door handle", "Put in a new door", "Fix a sliding door"] },
-      { name: "Locks", icon: "shield", keys: "lock key install change locked out", tasks: ["Lock installation", "Change the door lock", "Fix a broken lock", "Locked out — open my door", "Put in a padlock or gate lock"] },
-      { name: "Mounting and installing", icon: "hammer", keys: "mount tv curtain hang fan mirror blinds", tasks: ["TV mounting", "Curtain installation", "Ceiling fan installation", "Hang pictures or a mirror", "Install blinds"] },
-      { name: "Small repairs", icon: "wrench", keys: "minor repairs fix small things shelf", tasks: ["Shelf installation", "Minor home repairs", "Fix a cabinet or shelf", "Fix a window latch", "Fix a broken chair or table"] },
+      { name: "Furniture assembly", icon: "toolbox", keys: "assemble furniture bed wardrobe put together", tasks: ["Assemble a bed", "Assemble a wardrobe", "Assemble a table or chairs", "Assemble a shelf or cabinet", "Assemble a shoe rack", "Assemble a baby cot", "Assemble a study table", "Take furniture apart"] },
+      { name: "Door repairs", icon: "hammer", keys: "door hinge handle close broken", tasks: ["Fix a door that will not close", "Fix a door hinge", "Fix a broken door handle", "Put in a new door", "Fix a sliding door", "Fix a door that scrapes the floor", "Fix the bathroom door", "Put in a door frame"] },
+      { name: "Locks", icon: "shield", keys: "lock key install change locked out", tasks: ["Lock installation", "Change the door lock", "Fix a broken lock", "Locked out, open my door", "Open a locked room", "Put in a padlock or gate lock", "Fix the gate padlock", "Put locks on all the doors"] },
+      { name: "Mounting and installing", icon: "hammer", keys: "mount tv curtain hang fan mirror blinds", tasks: ["TV mounting", "Curtain installation", "Ceiling fan installation", "Hang pictures or a mirror", "Hang a big mirror", "Install blinds", "Install a towel rail in the bathroom", "Mount a whiteboard"] },
+      { name: "Small repairs", icon: "wrench", keys: "minor repairs fix small things shelf", tasks: ["Shelf installation", "Minor home repairs", "Fix a cabinet or shelf", "Fix a window latch", "Fix a broken chair or table", "Fix a broken window glass", "Fix the cupboard door", "Fix a loose shelf", "Fix the clothes line pole"] },
+      { name: "Gate and fence repairs", icon: "hammer", keys: "gate fence hinge burglar wire fix", tasks: ["Fix the gate", "Fix a broken gate hinge", "Fix the fence", "Put up a wire fence", "Fix the burglar bars", "Straighten a bent gate"] },
+      { name: "Furniture repairs", icon: "toolbox", keys: "fix broken bed table chair wardrobe drawer wood", tasks: ["Fix a broken bed", "Fix a broken table", "Fix a broken chair", "Fix the wardrobe door", "Fix a broken drawer", "Glue and fix a wooden stool"] },
     ],
   },
   {
     name: "Plumbing", icon: "droplet",
     services: [
-      { name: "Pipes and leaks", icon: "droplet", keys: "pipe leak water drip burst plumber", tasks: ["Fix leaking pipe", "Fix a broken pipe under the ground", "Fix a leaking tap", "Stop a water leak", "Fix the pipe to the tank"] },
-      { name: "Toilet", icon: "droplet", keys: "toilet blocked unblock flush install commode", tasks: ["Unblock toilet", "Install new toilet", "Fix toilet — will not flush", "Fix toilet leaking at the base"] },
-      { name: "Sink and drain", icon: "droplet", keys: "sink drain blocked faucet tap kitchen", tasks: ["Unblock kitchen sink / drain", "Install sink / faucet", "Drain cleaning", "Unblock bathroom drain", "Fix the kitchen tap"] },
-      { name: "Water tank and pump", icon: "droplet", keys: "tank pump water pressure black tank leaking", tasks: ["Install water tank (black tank)", "Install water pump", "Water pump repairs", "Fix low water pressure", "Fix water tank leaking", "Clean water tank"] },
-      { name: "Shower and bathroom", icon: "droplet", keys: "shower bathroom fix install", tasks: ["Fix shower", "Install a new shower", "Fix the bathroom tap", "Fix bathroom water leak"] },
+      { name: "Pipes and leaks", icon: "droplet", keys: "pipe leak water drip burst plumber", tasks: ["Fix leaking pipe", "Fix a broken pipe under the ground", "Fix a leaking tap", "Stop a water leak", "Fix the pipe to the tank", "Find where the water is leaking", "Fix the main water line", "Fix a pipe that burst"] },
+      { name: "Toilet", icon: "droplet", keys: "toilet blocked unblock flush install commode", tasks: ["Unblock toilet", "Install new toilet", "Fix toilet (will not flush)", "Fix toilet leaking at the base", "Fix a toilet that keeps running water", "Change the toilet seat", "Fix the toilet tank", "Unblock the toilet with a machine"] },
+      { name: "Sink and drain", icon: "droplet", keys: "sink drain blocked faucet tap kitchen", tasks: ["Unblock kitchen sink / drain", "Install sink / faucet", "Drain cleaning", "Unblock bathroom drain", "Fix the kitchen tap", "Fix the bathroom sink tap", "Install a kitchen sink", "Unblock the outside drain", "Fix water that is slow to go down"] },
+      { name: "Water tank and pump", icon: "droplet", keys: "tank pump water pressure black tank leaking", tasks: ["Install water tank (black tank)", "Install water pump", "Water pump repairs", "Fix low water pressure", "Fix water tank leaking", "Clean water tank", "Install a hand pump", "Fix the tank stand", "Move the water tank", "Fix a pump that will not prime"] },
+      { name: "Shower and bathroom", icon: "droplet", keys: "shower bathroom fix install", tasks: ["Fix shower", "Install a new shower", "Fix the bathroom tap", "Fix bathroom water leak", "Fix the shower head", "Put in a bathroom sink", "Fix the bath tub tap", "Stop water leaking under the bath"] },
+      { name: "New pipes and water lines", icon: "droplet", keys: "new pipes water line connect house run pipe", tasks: ["Run new pipes for a house", "Connect water to a new building", "Run pipe to the kitchen", "Run pipe to the bathroom", "Connect the house to the main line", "Put in an outside tap"] },
+      { name: "Septic and soak pit", icon: "droplet", keys: "septic soak pit smell backs up cover", tasks: ["Fix a full septic tank", "Fix the soak pit", "Unblock the septic pipe", "Fix bad smell from the septic", "Fix the septic cover", "Check why the toilet backs up"] },
     ],
   },
   {
     name: "Electrical", icon: "bolt",
     services: [
-      { name: "Lights", icon: "bolt", keys: "light fixture chandelier not working electrician", tasks: ["Fix light not working", "Install chandelier / light fixture", "Light fixture installation", "Fix lights going off and on", "Put in new lights"] },
-      { name: "Sockets and switches", icon: "bolt", keys: "socket switch outlet replace spark", tasks: ["Replace socket / switch", "Fix a socket or switch", "Put in new sockets", "Fix a sparking socket"] },
-      { name: "Wiring", icon: "bolt", keys: "wiring rewire breaker wire pole meter lec current", tasks: ["Electrical wiring", "Rewire 1 room", "Fix the wiring", "Fix the breaker box", "Fix the wire from the pole or meter", "Electrical troubleshooting"] },
-      { name: "Solar and inverter", icon: "bolt", keys: "solar panel inverter battery power", tasks: ["Install solar panel (1 panel)", "Install solar panel (full house)", "Install inverter + battery", "Inverter installation", "Fix the inverter or battery", "Connect solar power"] },
-      { name: "Generator wiring", icon: "generator", keys: "generator wiring changeover house", tasks: ["Fix generator wiring", "Generator wiring for the house", "Put in a changeover switch"] },
+      { name: "Lights", icon: "bolt", keys: "light fixture chandelier not working electrician", tasks: ["Fix light not working", "Install chandelier / light fixture", "Light fixture installation", "Fix lights going off and on", "Put in new lights", "Install an outdoor security light", "Fix the porch light", "Install a ceiling light", "Fix the lights in one room"] },
+      { name: "Sockets and switches", icon: "bolt", keys: "socket switch outlet replace spark", tasks: ["Replace socket / switch", "Fix a socket or switch", "Put in new sockets", "Fix a sparking socket", "Put in a socket by the bed", "Fix a burnt socket", "Put in sockets for the shop"] },
+      { name: "Wiring", icon: "bolt", keys: "wiring rewire breaker wire pole meter lec current", tasks: ["Electrical wiring", "Rewire 1 room", "Fix the wiring", "Fix the breaker box", "Fix the wire from the pole or meter", "Electrical troubleshooting", "Wire a new house", "Wire a new room", "Fix the wire the rats cut", "Check the whole house wiring"] },
+      { name: "Solar and inverter", icon: "bolt", keys: "solar panel inverter battery power", tasks: ["Install solar panel (1 panel)", "Install solar panel (full house)", "Install inverter + battery", "Inverter installation", "Fix the inverter or battery", "Connect solar power", "Add one more battery", "Fix solar that will not charge", "Install a solar street light in the yard", "Move the solar panel"] },
+      { name: "Generator wiring", icon: "generator", keys: "generator wiring changeover house", tasks: ["Fix generator wiring", "Generator wiring for the house", "Put in a changeover switch", "Wire the generator to the whole house", "Fix a changeover that sparks", "Separate the generator load"] },
+      { name: "Meter and LEC", icon: "bolt", keys: "meter lec current pole wire connect new house", tasks: ["Fix the meter problem", "LEC wire is down", "Connect current to a new house", "Move the meter to a new place", "Fix the pole wire to my house", "Check why my current keeps going off"] },
+      { name: "Fan and appliance wiring", icon: "bolt", keys: "fan wiring water heater ac point fridge point install", tasks: ["Install a ceiling fan with light", "Wire a water heater", "Wire an AC point", "Wire a big fridge point", "Install a wall fan"] },
     ],
   },
   {
     name: "Moving & Delivery", icon: "truck",
     services: [
-      { name: "Moving help", icon: "package", keys: "move moving house room carry load furniture", tasks: ["Move 1 room (kekeh + 2 guys)", "Move full house", "Move office", "Carry fridge / freezer", "Load a truck", "Unload a truck", "Pack things in boxes", "Move furniture"] },
-      { name: "Truck hire", icon: "truck", keys: "truck pickup hire sand gravel", tasks: ["Hire a truck", "Hire a pickup", "Deliver sand or gravel", "Carry building materials", "Carry farm produce"] },
-      { name: "Package and food delivery", icon: "bag", keys: "deliver package food courier monrovia delivery", tasks: ["Deliver package across Monrovia", "Deliver a package", "Deliver food from restaurant", "Food delivery", "Business courier services"] },
-      { name: "Market and pharmacy runs", icon: "bag", keys: "market groceries pharmacy medicine buy deliver", tasks: ["Buy + deliver groceries from market", "Grocery delivery", "Buy + deliver medicine from pharmacy", "Pharmacy pickup", "Go to the market for me"] },
-      { name: "Airport and trips", icon: "car", keys: "airport pickup drop trip", tasks: ["Airport pickup / drop-off", "Pick up someone at the airport", "Drop someone at the airport"] },
+      { name: "Moving help", icon: "package", keys: "move moving house room carry load furniture", tasks: ["Move 1 room (kekeh + 2 guys)", "Move full house", "Move office", "Move a shop", "Carry fridge / freezer", "Carry a fridge and deep freezer", "Load a truck", "Unload a truck", "Pack things in boxes", "Move furniture", "Carry blocks and cement", "Move a piano or big safe"] },
+      { name: "Truck hire", icon: "truck", keys: "truck pickup hire sand gravel", tasks: ["Hire a truck", "Hire a pickup", "Hire a truck for sand", "Hire a truck to move house", "Deliver sand or gravel", "Carry building materials", "Carry zinc and rods", "Carry water tanks", "Carry farm produce"] },
+      { name: "Package and food delivery", icon: "bag", keys: "deliver package food courier monrovia delivery", tasks: ["Deliver package across Monrovia", "Deliver a package", "Deliver food from restaurant", "Food delivery", "Business courier services", "Deliver a document", "Deliver a cake", "Same-day delivery in Monrovia", "Deliver a phone or laptop"] },
+      { name: "Market and pharmacy runs", icon: "bag", keys: "market groceries pharmacy medicine buy deliver", tasks: ["Buy + deliver groceries from market", "Grocery delivery", "Buy + deliver medicine from pharmacy", "Pharmacy pickup", "Go to the market for me", "Buy fish and food from the market", "Buy building things from town", "Buy and deliver baby things"] },
+      { name: "Airport and trips", icon: "car", keys: "airport pickup drop trip", tasks: ["Airport pickup / drop-off", "Pick up someone at the airport", "Drop someone at the airport", "Trip to Buchanan", "Trip to Gbarnga", "Trip to the airport at night", "Drive my car to another county"] },
+      { name: "Keke and bike delivery", icon: "truck", keys: "keke motorbike bike deliver carry load pickup", tasks: ["Deliver by keke", "Deliver by motorbike", "Keke to carry my load", "Bike to pick up a package", "Keke for a short trip", "Carry market load by keke"] },
+      { name: "Long distance moving", icon: "truck", keys: "move another county town far village load", tasks: ["Move to another county", "Carry load to another county", "Move from Monrovia to Gbarnga", "Move from Monrovia to Buchanan", "Truck load to the village", "Carry farm load from the village"] },
     ],
   },
   {
     name: "Mechanic Services", icon: "car",
     services: [
-      { name: "Car mechanic", icon: "wrench", keys: "car engine mechanic fix garage brakes", tasks: ["Fix car not starting", "Fix the engine", "Fix the brakes", "Fix brake pads squeaking", "Fix car AC not cold", "Fix overheating or the radiator", "Fix the gearbox", "Fix the clutch", "Check the whole car"] },
-      { name: "Oil, tires and battery", icon: "battery", keys: "oil tire tyre battery change flat jump", tasks: ["Change engine oil + filter", "Oil changes", "Fix flat tire / replace tire", "Tire replacement", "Replace car battery", "Battery installation", "Jump start car battery", "Charge the battery"] },
-      { name: "Car wash", icon: "carwash", keys: "wash car clean detailing vacuum", tasks: ["Car wash at home (outside only)", "Full car wash + vacuum inside", "Wash the car inside and out", "Mobile detailing", "Clean the car seats", "Wash a motorbike or keke"] },
-      { name: "Motorbike and keke", icon: "wrench", keys: "bike motorbike keke tricycle engine", tasks: ["Keke repair (engine)", "Keke will not start", "Moto repair (bike)", "Bike will not start", "Fix the bike chain", "Fix the bike brakes", "Wash keke / moto"] },
-      { name: "Driver", icon: "car", keys: "driver drive day trip hire", tasks: ["Driver for a day (you provide car)", "Driver for a trip (Monrovia to Buchanan etc.)", "Drive me to one place", "Truck driver for hire", "Drive for a wedding or funeral"] },
-      { name: "Towing", icon: "tow", keys: "tow stuck pull car broken", tasks: ["Tow my car", "Car stuck / need tow", "Pull my car out", "Move a broken car"] },
+      { name: "Car mechanic", icon: "wrench", keys: "car engine mechanic fix garage brakes", tasks: ["Fix car not starting", "Fix the engine", "Fix the brakes", "Fix brake pads squeaking", "Fix car AC not cold", "Fix overheating or the radiator", "Fix the gearbox", "Fix the clutch", "Check the whole car", "Fix the car horn", "Fix the suspension", "Fix the exhaust smoke", "Fix the steering", "Fix the water pump"] },
+      { name: "Oil, tires and battery", icon: "battery", keys: "oil tire tyre battery change flat jump", tasks: ["Change engine oil + filter", "Oil changes", "Fix flat tire / replace tire", "Tire replacement", "Replace car battery", "Battery installation", "Jump start car battery", "Charge the battery", "Rotate the tires", "Fix a slow leak in the tire", "Align the wheels", "Balance the wheels"] },
+      { name: "Car wash", icon: "carwash", keys: "wash car clean detailing vacuum", tasks: ["Car wash at home (outside only)", "Full car wash + vacuum inside", "Wash the car inside and out", "Mobile detailing", "Clean the car seats", "Wash a motorbike or keke", "Wash the engine", "Wash a truck", "Polish the car", "Clean under the car"] },
+      { name: "Motorbike and keke", icon: "wrench", keys: "bike motorbike keke tricycle engine", tasks: ["Keke repair (engine)", "Keke will not start", "Moto repair (bike)", "Bike will not start", "Fix the bike chain", "Fix the bike brakes", "Wash keke / moto", "Fix the keke gears", "Change the bike oil", "Fix the bike lights", "Fix a flat bike tire"] },
+      { name: "Driver", icon: "car", keys: "driver drive day trip hire", tasks: ["Driver for a day (you provide car)", "Driver for a trip (Monrovia to Buchanan etc.)", "Drive me to one place", "Truck driver for hire", "Drive for a wedding or funeral", "Driver for the weekend", "Driver to the village", "Night driver"] },
+      { name: "Towing", icon: "tow", keys: "tow stuck pull car broken", tasks: ["Tow my car", "Car stuck / need tow", "Pull my car out", "Move a broken car", "Tow my keke", "Pull my truck out of the mud", "Tow a car to the garage"] },
+      { name: "Car electrical", icon: "battery", keys: "car lights starter alternator windows alarm electrical dashboard", tasks: ["Fix car lights", "Fix the starter", "Fix the alternator", "Fix power windows", "Fix the car alarm", "Fix the dashboard lights"] },
+      { name: "Car check and inspection", icon: "wrench", keys: "check inspect car before buy sell trip light", tasks: ["Check a car before I buy it", "Full car check", "Find why the check light is on", "Check the car for a long trip", "Check a car I want to sell"] },
     ],
   },
   {
     name: "Generator", icon: "generator",
     services: [
-      { name: "Generator repair", icon: "generator", keys: "generator repair wont start dead smoking carburetor kva gen", tasks: ["Generator won't start", "Generator repair (small 2.5kva - 5kva)", "Generator repair (big 10kva+)", "Generator carburetor cleaning", "Generator smoking too much", "Generator starts, then stops", "Generator leaking fuel"] },
-      { name: "Generator service", icon: "generator", keys: "generator service oil change maintain", tasks: ["Generator service / oil change", "Change the oil and filter", "Service the generator", "Fix the battery or starter"] },
-      { name: "Generator install", icon: "generator", keys: "generator install changeover switch automatic", tasks: ["Install automatic changeover switch", "Put in a generator", "Install a generator"] },
-      { name: "Generator fuel", icon: "droplet", keys: "generator fuel diesel gasoline deliver", tasks: ["Buy + deliver generator fuel", "Deliver fuel or diesel"] },
+      { name: "Generator repair", icon: "generator", keys: "generator repair wont start dead smoking carburetor kva gen", tasks: ["Generator won't start", "Generator repair (small 2.5kva - 5kva)", "Generator repair (big 10kva+)", "Generator carburetor cleaning", "Generator smoking too much", "Generator starts, then stops", "Generator leaking fuel", "Generator is making a loud noise", "Generator uses too much fuel", "Generator will not give current", "Fix the generator pull starter"] },
+      { name: "Generator service", icon: "generator", keys: "generator service oil change maintain", tasks: ["Generator service / oil change", "Change the oil and filter", "Service the generator", "Fix the battery or starter", "Full generator check", "Change the spark plug", "Change the air filter"] },
+      { name: "Generator install", icon: "generator", keys: "generator install changeover switch automatic", tasks: ["Install automatic changeover switch", "Put in a generator", "Install a generator", "Install a big generator for a shop", "Connect the generator to the house", "Build a place for the generator"] },
+      { name: "Generator fuel", icon: "droplet", keys: "generator fuel diesel gasoline deliver", tasks: ["Buy + deliver generator fuel", "Deliver fuel or diesel", "Deliver diesel for the shop", "Fill the generator tank", "Buy fuel and check the generator"] },
+      { name: "Generator buying help", icon: "generator", keys: "generator buy check pick size used test", tasks: ["Check a generator before I buy it", "Help me pick the right size generator", "Test a used generator", "Set up a new generator I bought"] },
+      { name: "Generator for an event", icon: "generator", keys: "generator event wedding program church night bring", tasks: ["Bring a generator for my program", "Generator for a wedding", "Generator for a church program", "Generator for one night"] },
     ],
   },
   {
     name: "Beauty", icon: "scissors",
     services: [
-      { name: "Hair", icon: "scissors", keys: "hair braids weave wig style salon", tasks: ["Braids (knotless, cornrows, etc.)", "Fix my wig / install wig", "Weave hair", "Style hair for an event", "Dreadlocks", "Color or dye hair", "Fix or remove a weave"] },
-      { name: "Barber", icon: "scissors", keys: "haircut barber shave beard trim", tasks: ["Haircut at home", "Cut hair", "Shave / beard trim", "Cut a child's hair"] },
-      { name: "Makeup and nails", icon: "sparkles", keys: "makeup nails wedding lashes beauty", tasks: ["Makeup for wedding / party", "Makeup artists", "Manicure + pedicure at home", "Do nails", "Fix lashes or brows"] },
-      { name: "Massage and spa", icon: "heart", keys: "massage spa relax body", tasks: ["Massage (30 min)", "Massage (1 hour)", "Massage therapists", "Spa services"] },
+      { name: "Hair", icon: "scissors", keys: "hair braids weave wig style salon", tasks: ["Braids (knotless, cornrows, etc.)", "Fix my wig / install wig", "Weave hair", "Style hair for an event", "Dreadlocks", "Color or dye hair", "Fix or remove a weave", "Wash and treat my hair", "Cut and style hair", "Take out braids", "Style hair for photos"] },
+      { name: "Barber", icon: "scissors", keys: "haircut barber shave beard trim", tasks: ["Haircut at home", "Cut hair", "Shave / beard trim", "Cut a child's hair", "Haircut for a wedding", "Cut hair for the whole family", "Line up and trim", "Shave with a hot towel"] },
+      { name: "Makeup and nails", icon: "sparkles", keys: "makeup nails wedding lashes beauty", tasks: ["Makeup for wedding / party", "Makeup artists", "Manicure + pedicure at home", "Do nails", "Fix lashes or brows", "Do my nails for a wedding", "Fix gel nails", "Makeup for photos", "Makeup for graduation"] },
+      { name: "Massage and spa", icon: "heart", keys: "massage spa relax body", tasks: ["Massage (30 min)", "Massage (1 hour)", "Massage therapists", "Spa services", "Back massage", "Full body massage for pain", "Foot massage"] },
+      { name: "Skin and facial", icon: "sparkles", keys: "skin facial face pimples scrub waxing treat", tasks: ["Facial treatment", "Clean and treat the face", "Treat pimples", "Full body scrub", "Waxing"] },
+      { name: "Hair for children", icon: "scissors", keys: "child children kids hair braid cut school", tasks: ["Braid my child's hair", "Cut my child's hair at home", "Style my child's hair for school", "Wash and braid kids hair"] },
     ],
   },
   {
     name: "Tutoring", icon: "laptop",
     services: [
-      { name: "School tutoring", icon: "laptop", keys: "tutor waec math english school exam homework lessons", tasks: ["Tutor for WAEC (Math)", "Tutor for WAEC (English)", "Tutor for primary school (all subjects)", "Exam preparation coaching", "Help with school homework", "Home tutoring"] },
-      { name: "Reading and languages", icon: "laptop", keys: "read language french spanish teach", tasks: ["Teach kid to read (1 hour)", "Teach reading and writing", "Language lessons", "Teach French / Spanish"] },
-      { name: "Computer and phone lessons", icon: "phone", keys: "computer phone whatsapp teach basics online", tasks: ["Teach computer basics (1 hour)", "Computer training", "Teach how to use phone / WhatsApp (for old ma)", "Online tutoring"] },
-      { name: "Music and driving lessons", icon: "car", keys: "music piano drum driving lesson", tasks: ["Music lesson (piano / drum)", "Music lessons", "Teach driving (manual / automatic)"] },
+      { name: "School tutoring", icon: "laptop", keys: "tutor waec math english school exam homework lessons", tasks: ["Tutor for WAEC (Math)", "Tutor for WAEC (English)", "Tutor for primary school (all subjects)", "Exam preparation coaching", "Help with school homework", "Home tutoring", "Tutor for junior high math", "Tutor for senior high science", "Help my child pass to the next class", "Weekend lessons"] },
+      { name: "Reading and languages", icon: "laptop", keys: "read language french spanish teach", tasks: ["Teach kid to read (1 hour)", "Teach reading and writing", "Language lessons", "Teach French / Spanish", "Teach an adult to read", "Teach English speaking", "Teach spelling and writing"] },
+      { name: "Computer and phone lessons", icon: "phone", keys: "computer phone whatsapp teach basics online", tasks: ["Teach computer basics (1 hour)", "Computer training", "Teach how to use phone / WhatsApp (for old ma)", "Online tutoring", "Teach Excel and typing", "Teach me to use a laptop for work", "Teach me online classes"] },
+      { name: "Music and driving lessons", icon: "car", keys: "music piano drum driving lesson", tasks: ["Music lesson (piano / drum)", "Music lessons", "Teach driving (manual / automatic)", "Teach guitar", "Teach keyboard", "Driving lessons for a week", "Teach me to drive my own car"] },
+      { name: "Adult learning", icon: "laptop", keys: "adult learn read write math english business records mobile money", tasks: ["Teach me to read and write", "Teach me math for business", "Teach me English for work", "Teach me to keep records", "Teach me to use Mobile Money"] },
+      { name: "College help", icon: "laptop", keys: "college university assignment paper research exam help", tasks: ["Help with college assignments", "Help write a term paper", "Help with research work", "Teach me for a college exam"] },
     ],
   },
   {
     name: "Construction", icon: "bricks",
     services: [
-      { name: "Masonry", icon: "bricks", keys: "masonry blocks plaster wall build mason", tasks: ["Lay 100 blocks", "Build a wall", "Plaster 1 room wall", "Plaster a wall", "Fix cracks in the wall", "Lay blocks"] },
-      { name: "Tiles and finishing", icon: "bricks", keys: "tiles ceiling finishing bathroom kitchen floor", tasks: ["Install tiles (bathroom / kitchen floor)", "Put in tiles", "Install ceiling (PVC / plaster)", "Interior finishing"] },
-      { name: "Painting", icon: "roller", keys: "paint room house walls color painter", tasks: ["Paint 1 room (you buy paint)", "Paint full house (you buy paint)", "Paint doors and windows", "Paint the outside walls", "Paint a fence or gate"] },
-      { name: "Roofing", icon: "house", keys: "roof zinc leaking sheet", tasks: ["Fix leaking roof (zinc)", "Replace zinc roof sheet", "Fix the roof leaks", "Fix the roof frame"] },
-      { name: "Carpentry and welding", icon: "hammer", keys: "carpentry welding gate wardrobe fence wood zinc carpenter welder", tasks: ["Build wardrobe / cabinet", "Make a table or chairs", "Weld gate / burglar bar", "Make burglar bars", "Build fence (wood / zinc)", "Fencing installation", "Make a bed frame", "Make a wooden gate"] },
-      { name: "Septic and digging", icon: "bricks", keys: "septic soakaway dig pit well", tasks: ["Dig septic tank / soakaway", "Dig a septic tank", "Empty a septic tank", "Dig a pit latrine", "Dig a well"] },
+      { name: "Masonry", icon: "bricks", keys: "masonry blocks plaster wall build mason", tasks: ["Lay 100 blocks", "Build a wall", "Plaster 1 room wall", "Plaster a wall", "Fix cracks in the wall", "Lay blocks", "Build a fence wall", "Build an outdoor kitchen", "Fix a falling wall", "Build a soakaway wall"] },
+      { name: "Tiles and finishing", icon: "bricks", keys: "tiles ceiling finishing bathroom kitchen floor", tasks: ["Install tiles (bathroom / kitchen floor)", "Put in tiles", "Install ceiling (PVC / plaster)", "Interior finishing", "Tile the bathroom walls", "Tile the kitchen floor", "Fix broken tiles", "Tile the veranda", "Tile the steps"] },
+      { name: "Painting", icon: "roller", keys: "paint room house walls color painter", tasks: ["Paint 1 room (you buy paint)", "Paint full house (you buy paint)", "Paint doors and windows", "Paint the outside walls", "Paint a fence or gate", "Paint the gate and fence", "Paint one door", "Paint the shop", "Paint the ceiling"] },
+      { name: "Roofing", icon: "house", keys: "roof zinc leaking sheet", tasks: ["Fix leaking roof (zinc)", "Replace zinc roof sheet", "Fix the roof leaks", "Fix the roof frame", "Put a whole new roof", "Fix the roof where rain enters", "Fix the fascia board", "Change old zinc to new zinc"] },
+      { name: "Carpentry and welding", icon: "hammer", keys: "carpentry welding gate wardrobe fence wood zinc carpenter welder", tasks: ["Build wardrobe / cabinet", "Make a table or chairs", "Weld gate / burglar bar", "Make burglar bars", "Build fence (wood / zinc)", "Fencing installation", "Make a bed frame", "Make a wooden gate", "Make a wardrobe", "Make a kitchen cabinet", "Fix a wooden door", "Make a shop counter"] },
+      { name: "Septic and digging", icon: "bricks", keys: "septic soakaway dig pit well", tasks: ["Dig septic tank / soakaway", "Dig a septic tank", "Empty a septic tank", "Dig a pit latrine", "Dig a well", "Dig a grave", "Dig a well deeper", "Dig a foundation", "Dig a drainage"] },
+      { name: "Concrete and floor work", icon: "bricks", keys: "concrete floor cast slab blocks pave yard driveway", tasks: ["Make a concrete floor", "Fix a cracked floor", "Make concrete for the yard", "Make a driveway", "Cast a septic cover slab", "Make blocks for me", "Pave the compound"] },
     ],
   },
   {
     name: "Need It NOW", icon: "flag",
     services: [
-      { name: "Emergency help", icon: "flag", keys: "now emergency urgent quick fast today", tasks: ["Toilet blocked NOW", "No water NOW", "Generator dead NOW", "Door lock broken / locked out", "Car stuck / need tow", "Snake in house / yard", "Need security guard tonight", "Need nurse to come home"] },
+      { name: "Emergency help", icon: "flag", keys: "now emergency urgent quick fast today", tasks: ["Toilet blocked NOW", "No water NOW", "Generator dead NOW", "Door lock broken / locked out", "Car stuck / need tow", "Snake in house / yard", "Need security guard tonight", "Need nurse to come home", "Pipe burst NOW", "No current NOW", "Water leaking bad NOW", "Locked inside the house", "Need a ride to the hospital NOW", "Fallen tree blocking the road NOW"] },
     ],
   },
   {
     name: "Appliances", icon: "fridge",
     services: [
-      { name: "Fridge and freezer", icon: "fridge", keys: "fridge freezer cooling ice", tasks: ["Fix fridge not cooling", "Fix freezer making ice too much", "Fix the fridge", "Fix the freezer"] },
-      { name: "Air conditioning", icon: "fridge", keys: "ac air conditioning cold leaking gas split", tasks: ["Fix AC not cold / leaking water", "Install AC (split unit)", "Service AC (clean + gas)", "Fix the AC"] },
-      { name: "Fans, stove and machines", icon: "washer", keys: "fan stove microwave washing machine spinning hot plate", tasks: ["Fix standing fan not spinning", "Fix washing machine not spinning", "Fix electric stove / hot plate", "Fix microwave", "Fix the iron or kettle", "Fix the blender or small machine"] },
+      { name: "Fridge and freezer", icon: "fridge", keys: "fridge freezer cooling ice", tasks: ["Fix fridge not cooling", "Fix freezer making ice too much", "Fix the fridge", "Fix the freezer", "Fix a fridge that is too cold", "Fix the deep freezer", "Fix a fridge door that will not close", "Regas the fridge"] },
+      { name: "Air conditioning", icon: "fridge", keys: "ac air conditioning cold leaking gas split", tasks: ["Fix AC not cold / leaking water", "Install AC (split unit)", "Service AC (clean + gas)", "Fix the AC", "Move an AC to another room", "Fix an AC remote problem", "Install AC for a shop"] },
+      { name: "Fans, stove and machines", icon: "washer", keys: "fan stove microwave washing machine spinning hot plate", tasks: ["Fix standing fan not spinning", "Fix washing machine not spinning", "Fix electric stove / hot plate", "Fix microwave", "Fix the iron or kettle", "Fix the blender or small machine", "Fix the electric kettle", "Fix the toaster", "Fix the sewing machine", "Fix the water dispenser"] },
+      { name: "Washing machine", icon: "washer", keys: "washing machine washer draining shaking leaking install service", tasks: ["Fix a washing machine not draining", "Fix a washing machine shaking", "Install a washing machine", "Fix a washer that will not spin at all", "Fix water leaking from the washer", "Service the washing machine"] },
+      { name: "TV and home electronics", icon: "camera", keys: "tv television screen sound radio dvd electronics fix", tasks: ["Fix a TV not turning on", "Fix a black TV screen", "Fix the home theater sound", "Fix the radio", "Fix the DVD player", "Set up a new TV"] },
     ],
   },
   {
     name: "Children & Care", icon: "heart",
     services: [
-      { name: "Childcare", icon: "smiley", keys: "baby child children babysitter nanny watch kids", tasks: ["Babysitter for 3 hours", "Babysitter for full day", "Watch my child at home", "Watch children for the day", "Take my child to school and back", "Help with homework", "Watch my child at night"] },
-      { name: "Care for old or sick", icon: "heart", keys: "old sick care nurse home ma pa", tasks: ["Take care of old ma / pa for a day", "Care at home in the day", "Care at home day and night", "Help with bathing and moving", "Sit with a sick person at the hospital", "Give medicine on time and help the person eat"] },
-      { name: "Maid and house help", icon: "house", keys: "maid domestic house help staff", tasks: ["Maid for a day (8 hours)", "Maid for a week (live-out)", "Maid services", "Domestic staff recruitment", "Cook for a week (meal prep)"] },
-      { name: "Cooking for people", icon: "cloche", keys: "cook party catering wedding funeral food bake", tasks: ["Cook for party (20 people)", "Cook for my home", "Cook for a wedding", "Cook for a funeral", "Bake bread or cake"] },
-      { name: "House sitting and pets", icon: "heart", keys: "house sitting pet dog feed travel watch animal", tasks: ["House-sitter while you travel", "House-sitting", "Wash dog / pet", "Feed pet while you travel", "Watch my dog", "Feed my animals"] },
+      { name: "Childcare", icon: "smiley", keys: "baby child children babysitter nanny watch kids", tasks: ["Babysitter for 3 hours", "Babysitter for full day", "Watch my child at home", "Watch children for the day", "Take my child to school and back", "Help with homework", "Watch my child at night", "Watch my baby at night", "Take care of twins", "Watch my child on weekends", "Stay with my child after school"] },
+      { name: "Care for old or sick", icon: "heart", keys: "old sick care nurse home ma pa", tasks: ["Take care of old ma / pa for a day", "Care at home in the day", "Care at home day and night", "Help with bathing and moving", "Sit with a sick person at the hospital", "Give medicine on time and help the person eat", "Stay with a sick person at home at night", "Help an old person walk and bathe", "Take the person to the hospital and back"] },
+      { name: "Maid and house help", icon: "house", keys: "maid domestic house help staff", tasks: ["Maid for a day (8 hours)", "Maid for a week (live-out)", "Maid services", "Domestic staff recruitment", "Cook for a week (meal prep)", "Maid for a month (live-out)", "Maid for a month (live-in)", "House help for the weekend", "Cook and clean for a week"] },
+      { name: "Cooking for people", icon: "cloche", keys: "cook party catering wedding funeral food bake", tasks: ["Cook for party (20 people)", "Cook for my home", "Cook for a wedding", "Cook for a funeral", "Bake bread or cake", "Cook for a graduation", "Cook for a church program", "Bake for a party", "Cook soup for the week"] },
+      { name: "House sitting and pets", icon: "heart", keys: "house sitting pet dog feed travel watch animal", tasks: ["House-sitter while you travel", "House-sitting", "Wash dog / pet", "Feed pet while you travel", "Watch my dog", "Feed my animals", "Walk my dog", "Watch my house for a week", "Feed my chickens while I travel", "Stay in my house at night only"] },
+      { name: "After school and picking", icon: "smiley", keys: "school pick up drop child after homework lessons", tasks: ["Pick up my child from school", "Drop my child at school", "Stay with children after school", "Help my child with homework after school", "Take my child to lessons", "Watch children until I come from work"] },
     ],
   },
   {
     name: "Tech", icon: "phone",
     services: [
-      { name: "Phone repair", icon: "phone", keys: "phone screen cracked unlock battery charge speaker", tasks: ["Fix cracked phone screen", "Unlock phone", "Phone will not charge", "Phone will not turn on", "Change the phone battery", "Fix the speaker or mic", "The phone fell in water", "Remove a phone password or lock"] },
-      { name: "Computer repair", icon: "laptop", keys: "computer laptop virus turning on setup", tasks: ["Fix laptop not turning on", "Fix the laptop", "Computer will not turn on", "Remove a virus", "Laptop setup", "Install programs", "IT support"] },
-      { name: "WiFi and network", icon: "laptop", keys: "wifi internet router network setup", tasks: ["Setup WiFi router", "Wi-Fi setup", "Put in WiFi at my house", "Fix my internet", "Network installation", "Set up a new phone"] },
-      { name: "CCTV and TV", icon: "camera", keys: "cctv camera tv dish satellite decoder security", tasks: ["Install CCTV (1 camera)", "Install CCTV (4 cameras)", "CCTV installation", "Fix security cameras", "Put in a satellite dish", "Fix the TV", "Fix the decoder"] },
-      { name: "Printer", icon: "laptop", keys: "printer installation fix print", tasks: ["Printer installation", "Fix the printer", "Set up a new computer"] },
+      { name: "Phone repair", icon: "phone", keys: "phone screen cracked unlock battery charge speaker", tasks: ["Fix cracked phone screen", "Unlock phone", "Phone will not charge", "Phone will not turn on", "Change the phone battery", "Fix the speaker or mic", "The phone fell in water", "Remove a phone password or lock", "Fix the phone charging port", "Fix a phone that hangs", "Change the phone casing", "Fix the front camera"] },
+      { name: "Computer repair", icon: "laptop", keys: "computer laptop virus turning on setup", tasks: ["Fix laptop not turning on", "Fix the laptop", "Computer will not turn on", "Remove a virus", "Laptop setup", "Install programs", "IT support", "Fix a slow laptop", "Upgrade the laptop memory", "Fix the laptop keyboard", "Recover files from a laptop"] },
+      { name: "WiFi and network", icon: "laptop", keys: "wifi internet router network setup", tasks: ["Setup WiFi router", "Wi-Fi setup", "Put in WiFi at my house", "Fix my internet", "Network installation", "Fix WiFi that is slow", "Extend WiFi to the whole house", "Set up office internet", "Fix a router that keeps cutting"] },
+      { name: "CCTV and TV", icon: "camera", keys: "cctv camera tv dish satellite decoder security", tasks: ["Install CCTV (1 camera)", "Install CCTV (4 cameras)", "CCTV installation", "Fix security cameras", "Put in a satellite dish", "Fix the TV", "Fix the decoder", "Install a doorbell camera", "Fix the dish signal", "Add more cameras", "Set up TV in a new house"] },
+      { name: "Printer", icon: "laptop", keys: "printer installation fix print", tasks: ["Printer installation", "Fix the printer", "Set up a new computer", "Fix a printer not printing", "Set up a printer for the office", "Fix a paper jam problem", "Connect a printer to WiFi"] },
+      { name: "Phone setup and accounts", icon: "phone", keys: "phone setup new move whatsapp facebook account recover mobile money backup", tasks: ["Set up a new phone", "Move my things to a new phone", "Fix my WhatsApp", "Fix my Facebook account", "Recover my phone account", "Set up Mobile Money on my phone", "Back up my phone photos"] },
     ],
   },
   {
     name: "Business", icon: "bag",
     services: [
-      { name: "Design and photos", icon: "camera", keys: "design flyer business card graphic photos shop whatsapp catalog", tasks: ["Design flyer / business card", "Graphic design", "Take product photos for my shop", "Create WhatsApp Business catalog"] },
-      { name: "Social media and marketing", icon: "phone", keys: "social media instagram tiktok marketing flyers", tasks: ["Manage my Instagram / TikTok for a week", "Social media management", "Marketing assistance", "Deliver flyers around Monrovia"] },
-      { name: "Office help", icon: "laptop", keys: "type print document data entry bookkeeping virtual assistant admin", tasks: ["Type + print document", "Data entry", "Virtual assistant", "Administrative support", "Do my bookkeeping for month", "Bookkeeping"] },
-      { name: "Business setup", icon: "bag", keys: "business registration cac setup pos receipt printer", tasks: ["Help with CAC business registration", "Business registration support", "Set up POS / receipt printer"] },
+      { name: "Design and photos", icon: "camera", keys: "design flyer business card graphic photos shop whatsapp catalog", tasks: ["Design flyer / business card", "Graphic design", "Take product photos for my shop", "Create WhatsApp Business catalog", "Design a signboard", "Design a banner for my shop", "Take photos of my house to sell", "Design a program booklet"] },
+      { name: "Social media and marketing", icon: "phone", keys: "social media instagram tiktok marketing flyers", tasks: ["Manage my Instagram / TikTok for a week", "Social media management", "Marketing assistance", "Deliver flyers around Monrovia", "Make videos for my business", "Run ads for my shop", "Post for my business every day", "Grow my business page"] },
+      { name: "Office help", icon: "laptop", keys: "type print document data entry bookkeeping virtual assistant admin", tasks: ["Type + print document", "Data entry", "Virtual assistant", "Administrative support", "Do my bookkeeping for month", "Bookkeeping", "Type my CV", "Write a business letter", "Make a price list", "Enter my shop records in a book"] },
+      { name: "Business setup", icon: "bag", keys: "business registration cac setup pos receipt printer", tasks: ["Help with CAC business registration", "Business registration support", "Set up POS / receipt printer", "Help me open a business bank account", "Help with business tax papers", "Set up my shop records", "Help me register for a Mobile Money merchant account"] },
+      { name: "Printing and typing", icon: "laptop", keys: "print copies banner t-shirts laminate documents programs", tasks: ["Print my documents", "Make copies", "Print a banner", "Print T-shirts", "Laminate my documents", "Print wedding programs"] },
+      { name: "Money and records", icon: "bag", keys: "money records stock count shop price goods sales book", tasks: ["Check my shop money records", "Count stock in my shop", "Make a list of everything in my shop", "Help me price my goods", "Write my daily sales book"] },
     ],
   },
   {
     name: "Errands & Personal", icon: "package",
     services: [
-      { name: "Errands", icon: "bag", keys: "errand line bank lec immigration market carry duala queue", tasks: ["Stand in line for me (bank, LEC, immigration)", "Go to market and buy list for me", "Help me carry load from Duala market", "Run an errand for me", "Pay a bill or do a bank errand", "Pick up something for me"] },
-      { name: "Personal assistant", icon: "package", keys: "personal assistant shopping help organize", tasks: ["Personal assistant", "Shopping assistance", "Personal assistant for the day"] },
-      { name: "Fitness", icon: "heart", keys: "fitness training exercise personal trainer", tasks: ["Personal fitness training", "Fitness training at home"] },
+      { name: "Errands", icon: "bag", keys: "errand line bank lec immigration market carry duala queue", tasks: ["Stand in line for me (bank, LEC, immigration)", "Go to market and buy list for me", "Help me carry load from Duala market", "Run an errand for me", "Pay a bill or do a bank errand", "Pick up something for me", "Deliver a document to an office", "Pick up my package from the office", "Go to the bank for me"] },
+      { name: "Personal assistant", icon: "package", keys: "personal assistant shopping help organize", tasks: ["Personal assistant", "Shopping assistance", "Personal assistant for the day", "Help me organize my house papers", "Help me shop for a program", "Assistant for a trip"] },
+      { name: "Fitness", icon: "heart", keys: "fitness training exercise personal trainer", tasks: ["Personal fitness training", "Fitness training at home", "Teach me exercise at home", "Walk with me for exercise", "Train me to lose weight", "Yoga and stretching"] },
+      { name: "Shopping help", icon: "bag", keys: "shop buy clothes town wedding school party gift", tasks: ["Buy clothes for me from town", "Buy things for a wedding", "Buy school things for my children", "Shop for party things", "Buy a gift and deliver it"] },
+      { name: "Go with me", icon: "package", keys: "go with me hospital office town travel village stay", tasks: ["Go with me to the hospital", "Go with me to an office", "Go with me to town", "Travel with me to the village", "Stay with me at the hospital"] },
     ],
   },
   {
     name: "Events", icon: "flag",
     services: [
-      { name: "Canopy, chairs and setup", icon: "flag", keys: "rent canopy chairs tables setup event hire", tasks: ["Rent + setup canopy + chairs (50 chairs)", "Hire chairs", "Hire canopies", "Hire tables", "Hire a sound system", "Set up chairs and canopies"] },
-      { name: "Decoration", icon: "sparkles", keys: "decorate birthday wedding party event", tasks: ["Decorate for birthday party", "Decorate for wedding", "Event decoration", "Decorate for a party"] },
-      { name: "Music and hosting", icon: "flag", keys: "dj mc host music sound event", tasks: ["DJ for 4 hours", "DJ services", "MC for event", "MC / host services", "DJ or sound system"] },
-      { name: "Photo and video", icon: "camera", keys: "photographer videographer photo video event", tasks: ["Photographer for 3 hours", "Photography", "Videographer for event", "Videography", "Take photos or video"] },
-      { name: "Event food and cleanup", icon: "cloche", keys: "caterer cook serve cleanup party event planning", tasks: ["Cook + serve for event (caterer)", "Catering", "Serve food at an event", "Cleanup after party (2 people)", "Clean after an event", "Event planning"] },
-      { name: "Event security", icon: "shield", keys: "security event guards gate", tasks: ["Security for event (2 guards)", "Event security", "Welcome guests at the gate"] },
+      { name: "Canopy, chairs and setup", icon: "flag", keys: "rent canopy chairs tables setup event hire", tasks: ["Rent + setup canopy + chairs (50 chairs)", "Hire chairs", "Hire canopies", "Hire tables", "Hire a sound system", "Set up chairs and canopies", "Hire plastic tables", "Hire a big canopy for a wedding", "Set up for a church program", "Hire cutlery and plates"] },
+      { name: "Decoration", icon: "sparkles", keys: "decorate birthday wedding party event", tasks: ["Decorate for birthday party", "Decorate for wedding", "Event decoration", "Decorate for a party", "Decorate for a baby shower", "Decorate for graduation", "Decorate for a church program", "Balloon decoration for a party"] },
+      { name: "Music and hosting", icon: "flag", keys: "dj mc host music sound event", tasks: ["DJ for 4 hours", "DJ services", "MC for event", "MC / host services", "DJ or sound system", "Live band for an event", "Play music for a wedding", "MC for a funeral program", "Sound system for a church program"] },
+      { name: "Photo and video", icon: "camera", keys: "photographer videographer photo video event", tasks: ["Photographer for 3 hours", "Photography", "Videographer for event", "Videography", "Take photos or video", "Take wedding photos", "Video a funeral program", "Take family photos", "Photos for a business"] },
+      { name: "Event food and cleanup", icon: "cloche", keys: "caterer cook serve cleanup party event planning", tasks: ["Cook + serve for event (caterer)", "Catering", "Serve food at an event", "Cleanup after party (2 people)", "Clean after an event", "Event planning", "Serve drinks at my program", "Wash dishes after the event", "Cook for a church program", "Cater a wedding"] },
+      { name: "Event security", icon: "shield", keys: "security event guards gate", tasks: ["Security for event (2 guards)", "Event security", "Welcome guests at the gate", "Guard the gate at my program", "Security for a wedding", "Control the crowd at a program"] },
+      { name: "Ushers and program help", icon: "flag", keys: "ushers welcome guests program seat plan event", tasks: ["Ushers for my wedding", "Ushers for a church program", "Welcome guests at my program", "Share programs and seat guests", "Plan my whole program with me"] },
     ],
   },
   {
     name: "Security", icon: "shield",
     services: [
-      { name: "Guards", icon: "shield", keys: "guard security house shop watch", tasks: ["Security guards", "Guard my house", "Guard my shop in the day", "Guard building materials", "Guard a warehouse or yard"] },
-      { name: "Night watch", icon: "shield", keys: "night watchman watch night property", tasks: ["Night watchmen", "Watch my shop at night", "Property watch services", "Night watchman for my house"] },
+      { name: "Guards", icon: "shield", keys: "guard security house shop watch", tasks: ["Security guards", "Guard my house", "Guard my shop in the day", "Guard building materials", "Guard a warehouse or yard", "Guard my building site", "Guard my farm", "Guard a school", "Guard a church"] },
+      { name: "Night watch", icon: "shield", keys: "night watchman watch night property", tasks: ["Night watchmen", "Watch my shop at night", "Property watch services", "Night watchman for my house", "Watch my building site at night", "Watch my farm at night", "Watch an empty house at night"] },
+      { name: "Escort and trip guard", icon: "shield", keys: "escort guard trip goods road travel money", tasks: ["Guard me on a trip", "Escort me with goods to town", "Guard my load on the road", "Stay with my shop when I travel", "Guard my house while I am at a program"] },
     ],
   },
   {
     name: "Yard & Farm", icon: "leaf",
     services: [
-      { name: "Yard work", icon: "leaf", keys: "grass cut bush yard tree compound clear", tasks: ["Cut grass / clear bush", "Cut the grass", "Clear the yard", "Cut down tree", "Trim trees and bushes", "Clean the compound", "Level the ground"] },
-      { name: "Farm work", icon: "leaf", keys: "farm plant harvest cassava rice land irrigation crops", tasks: ["Plant cassava / rice", "Harvest cassava", "Planting assistance", "Harvesting assistance", "Farm labor", "Land clearing", "Brush or clear farm land", "Irrigation setup", "Carry farm things"] },
-      { name: "Animals and poultry", icon: "heart", keys: "chickens poultry livestock goats feed coop pig", tasks: ["Feed chickens / clean coop", "Poultry care", "Livestock care", "Clean the animal place"] },
+      { name: "Yard work", icon: "leaf", keys: "grass cut bush yard tree compound clear", tasks: ["Cut grass / clear bush", "Cut the grass", "Clear the yard", "Cut down tree", "Trim trees and bushes", "Clean the compound", "Level the ground", "Dig the drainage in the yard", "Plant flowers in the yard", "Cut the big grass with a machine", "Clean the back yard"] },
+      { name: "Farm work", icon: "leaf", keys: "farm plant harvest cassava rice land irrigation crops", tasks: ["Plant cassava / rice", "Harvest cassava", "Planting assistance", "Harvesting assistance", "Farm labor", "Land clearing", "Brush or clear farm land", "Irrigation setup", "Carry farm things", "Clear a farm plot", "Plant rice", "Weed the farm", "Harvest rice", "Make cassava farm beds"] },
+      { name: "Animals and poultry", icon: "heart", keys: "chickens poultry livestock goats feed coop pig", tasks: ["Feed chickens / clean coop", "Poultry care", "Livestock care", "Clean the animal place", "Clean the pig pen", "Build a chicken coop", "Feed goats", "Take care of my dog at the farm"] },
+      { name: "Tree work", icon: "leaf", keys: "tree cut down trim branches fallen plant carry", tasks: ["Cut down a big tree", "Trim the mango tree", "Cut tree branches over the house", "Carry away the cut tree", "Plant trees in the yard", "Cut a fallen tree"] },
+      { name: "Fence and compound", icon: "leaf", keys: "fence wire bamboo flower gate post compound", tasks: ["Build a wire fence", "Fix the yard fence", "Plant a flower fence", "Make a bamboo fence", "Fix the gate post"] },
     ],
   },
   {
     name: "Water", icon: "droplet",
     services: [
-      { name: "Water delivery", icon: "droplet", keys: "water deliver tank gallons fill", tasks: ["Deliver water (1 tank / 500 gallons)", "Water delivery", "Deliver water", "Fill my water tank"] },
-      { name: "Wells and boreholes", icon: "droplet", keys: "well borehole drill clean water", tasks: ["Clean water well", "Drill borehole check", "Clean water tank", "Water tank cleaning"] },
+      { name: "Water delivery", icon: "droplet", keys: "water deliver tank gallons fill", tasks: ["Deliver water (1 tank / 500 gallons)", "Water delivery", "Deliver water", "Fill my water tank", "Deliver water for a program", "Fill my drum with water", "Deliver drinking water gallons", "Bring water for building work"] },
+      { name: "Wells and boreholes", icon: "droplet", keys: "well borehole drill clean water", tasks: ["Clean water well", "Drill borehole check", "Clean water tank", "Water tank cleaning", "Fix the well cover", "Deepen my well", "Fix the hand pump at the well"] },
+      { name: "Hand pump", icon: "droplet", keys: "hand pump fix install handle dirty water move", tasks: ["Fix the hand pump", "Install a hand pump", "Fix the pump handle", "The pump brings dirty water", "Move the hand pump"] },
+      { name: "Water tank work", icon: "droplet", keys: "water tank install move stand clean tap fix", tasks: ["Install a new water tank", "Move the water tank", "Fix the tank stand", "Clean and wash the tank inside", "Fix the tank tap"] },
     ],
   },
   {
     name: "Premium", icon: "toolbox",
     services: [
-      { name: "Professionals", icon: "toolbox", keys: "lawyer accountant architect engineer surveyor doctor real estate professional appointment", tasks: ["Lawyer", "Accountant", "Architect", "Engineer", "Surveyor", "Real estate agent", "Doctor — book an appointment only"] },
-    ],
-  },
-  {
-    name: "Other work", icon: "toolbox",
-    services: [
-      { name: "Other", icon: "toolbox", keys: "other something else work help", tasks: ["Something else"] },
+      { name: "Professionals", icon: "toolbox", keys: "lawyer accountant architect engineer surveyor doctor real estate professional appointment", tasks: ["Lawyer", "Accountant", "Architect", "Engineer", "Surveyor", "Real estate agent", "Doctor (book an appointment only)", "Veterinarian for my dog", "Veterinarian for farm animals", "Book a private nurse visit", "Translator for a document"] },
     ],
   },
 ];
-
-
 
 type ServiceDef = { name: string; icon: string; group: string; keys: string; tasks: string[] };
 const SERVICES: ServiceDef[] = SERVICE_GROUPS.flatMap((g) =>
@@ -280,137 +311,186 @@ function serviceOf(name: string): ServiceDef | undefined {
    job is. */
 type WorkQ = { q: string; options?: string[]; text?: boolean; required?: boolean; placeholder?: string };
 const WORK_QUESTIONS: Record<string, WorkQ[]> = {
-  "House cleaning": [
-    { q: "How many rooms?", options: ["1 room", "2 rooms", "3 rooms", "4 rooms", "The whole house"] },
-    { q: "One time, or again and again?", options: ["One time only", "Every week", "Every two weeks", "Every month"] },
-    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  "Adult learning": [
+    { q: "Where?", options: ["At my house", "By phone or online"] },
+    { q: "How often?", options: ["One time", "Every week", "Every day"] },
   ],
-  "Deep cleaning": [
-    { q: "Where?", options: ["The whole house", "Kitchen and bathroom", "One part of the house"] },
-    { q: "How dirty is it?", options: ["Very dirty", "Not too dirty"] },
-    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  "After building cleaning": [
+    { q: "What work just finished?", options: ["Building", "Painting", "Tiles"] },
+    { q: "How big?", options: ["1 room", "The whole house"] },
   ],
-  "Laundry and ironing": [
-    { q: "How much?", options: ["1 bag", "2 bags", "3 or more bags"] },
-    { q: "Where?", options: ["Come to my house", "I will bring the clothes"] },
+  "After school and picking": [
+    { q: "How many children?", options: ["1 child", "2 children", "3 or more children"] },
+    { q: "How often?", options: ["One time", "Every school day", "Some days"] },
   ],
-  "Dish washing": [
-    { q: "For what?", options: ["For an event", "For my house"] },
-    { q: "How many dishes?", options: ["A small pile", "A medium pile", "A big pile"] },
-  ],
-  "Carpet and windows": [
-    { q: "What should be cleaned?", options: ["Carpet only", "Windows only", "Carpet and windows"] },
-    { q: "How big?", options: ["Small", "Medium", "Big"] },
-  ],
-  "Office cleaning": [
-    { q: "How big is the place?", options: ["Small office or shop", "Medium", "Big"] },
-    { q: "How often?", options: ["One time only", "Every day", "Every week"] },
-  ],
-  "Furniture assembly": [
-    { q: "How many pieces?", options: ["1 piece", "2 to 3 pieces", "Many pieces"] },
-    { q: "Do you have tools?", options: ["Yes, I have tools", "No, bring tools", "Not sure"] },
-  ],
-  "Door repairs": [
-    { q: "Which door?", options: ["Front door", "Room door", "Bathroom door", "Gate"] },
-    { q: "What is wrong?", options: ["Will not close", "Handle is broken", "Hinge is broken", "Lock is bad"] },
-  ],
-  "Locks": [
-    { q: "New lock, or fix the old one?", options: ["Put in a new lock", "Fix the old lock", "Change the lock"] },
-    { q: "How many locks?", options: ["1 lock", "2 locks", "3 or more locks"] },
-  ],
-  "Mounting and installing": [
-    { q: "Where?", options: ["Inside the house", "Outside"] },
-    { q: "What are the walls?", options: ["Block walls", "Wood walls", "Not sure"] },
-  ],
-  "Small repairs": [
-    { q: "How many things?", options: ["1 thing", "2 to 3 things", "Many things"] },
-    { q: "Who brings the materials?", options: ["I have them", "The worker brings them", "Not sure"] },
-  ],
-  "Pipes and leaks": [
-    { q: "Where is the leak?", options: ["Kitchen", "Bathroom", "Outside", "Under the ground"] },
-    { q: "Is water still running?", options: ["Yes, water is running", "I turned the water off", "Not sure"] },
-    { q: "Do you have the parts it needs?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
-  ],
-  "Toilet": [
-    { q: "What is wrong?", options: ["Blocked", "Will not flush", "Leaking", "Put in a new one"] },
-    { q: "If it is blocked, how bad?", options: ["Water still goes down small", "Fully blocked", "Water is coming back up"] },
-  ],
-  "Sink and drain": [
-    { q: "Where?", options: ["Kitchen", "Bathroom", "Outside"] },
-    { q: "How bad is it?", options: ["Slow", "Fully blocked", "Water coming back up"] },
-  ],
-  "Water tank and pump": [
-    { q: "How big is the tank?", options: ["Small tank", "500 gallons", "1000 gallons", "I don't know"] },
-    { q: "Where will the tank go?", options: ["On the ground", "Up on a stand", "On the roof"] },
-  ],
-  "Shower and bathroom": [
-    { q: "Fix it, or put in a new one?", options: ["Fix it", "Put in a new one"] },
-  ],
-  "Lights": [
-    { q: "How many lights?", options: ["1 light", "2 to 3 lights", "Many lights"] },
-    { q: "Where?", options: ["One room", "The whole house", "Outside"] },
-  ],
-  "Sockets and switches": [
-    { q: "How many?", options: ["1", "2 to 3", "Many"] },
-    { q: "What happened?", options: ["Stopped working", "Sparking", "Broken", "Put in new ones"] },
-  ],
-  "Wiring": [
-    { q: "How big is the work?", options: ["1 room", "The whole house", "One part of the house"] },
-    { q: "Current from where?", options: ["LEC", "Generator", "LEC and generator", "Solar"] },
-  ],
-  "Solar and inverter": [
-    { q: "What should it power?", options: ["Lights and fan only", "TV and fridge too", "The whole house"] },
-    { q: "Do you have panels or a battery?", options: ["I have everything", "I have some things", "I have nothing yet"] },
-  ],
-  "Generator wiring": [
-    { q: "What switch?", options: ["Manual switch", "Automatic switch", "Not sure"] },
-  ],
-  "Moving help": [
-    { q: "How far?", options: ["Inside the same town", "To another town"] },
-    { q: "Are there stairs to carry things on?", options: ["No stairs", "Yes, there are stairs", "I don't know"] },
-    { q: "Do you need a truck?", options: ["Yes, I need a truck", "No, I have a truck", "No truck needed"] },
-  ],
-  "Truck hire": [
-    { q: "What will it carry?", options: ["Sand or gravel", "Building materials", "Furniture and house things", "Farm things", "Other heavy things"] },
-    { q: "How far?", options: ["Inside the same town", "To another town"] },
-  ],
-  "Package and food delivery": [
-    { q: "How far?", options: ["Inside Monrovia", "Outside Monrovia", "To another town"] },
-    { q: "How big is it?", options: ["Small", "Medium", "Big or heavy"] },
-  ],
-  "Market and pharmacy runs": [
-    { q: "Which market?", options: ["Duala Market", "Waterside", "Red Light", "Paynesville", "Another market"] },
-    { q: "Is your list ready?", options: ["Yes, I have a list", "I will say it on the phone"] },
+  "Air conditioning": [
+    { q: "What is wrong with it?", options: ["Not cold", "Leaking water", "Will not turn on", "Just service it"] },
+    { q: "How many ACs?", options: ["1 AC", "2 ACs", "3 or more ACs"] },
   ],
   "Airport and trips": [
     { q: "Pick up, or drop off?", options: ["Pick up", "Drop off"] },
     { q: "How many people?", options: ["1 to 2 people", "3 to 4 people", "More than 4 people"] },
+  ],
+  "Animals and poultry": [
+    { q: "What animal?", options: ["Chickens", "Goats", "Pigs", "Other animals"] },
+    { q: "For how long?", options: ["One day", "Every day", "Many days"] },
+  ],
+  "Barber": [
+    { q: "Where?", options: ["At my house", "At the barber shop"] },
+  ],
+  "Bathroom and toilet cleaning": [
+    { q: "How many bathrooms?", options: ["1 bathroom", "2 bathrooms", "3 or more bathrooms"] },
+    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  ],
+  "CCTV and TV": [
+    { q: "What do you need?", options: ["Cameras", "TV or dish", "Both"] },
+    { q: "How many cameras?", options: ["1 camera", "2 to 4 cameras", "More than 4 cameras"] },
+  ],
+  "Canopy, chairs and setup": [
+    { q: "For what event?", options: ["Birthday", "Wedding", "Funeral", "Church program", "Another party"] },
+    { q: "How many chairs?", options: ["About 20 chairs", "About 50 chairs", "About 100 chairs", "More than 100 chairs"] },
+  ],
+  "Car check and inspection": [
+    { q: "Where is the car now?", options: ["At my house", "At the seller's place", "At a garage"] },
+  ],
+  "Car electrical": [
+    { q: "Does the car start?", options: ["Yes, it starts", "No, it does not start"] },
   ],
   "Car mechanic": [
     { q: "Does the car start?", options: ["Yes, it starts", "No, it does not start"] },
     { q: "Where is the car now?", options: ["At my house", "At my work or shop", "Stuck on the road"] },
     { q: "What kind of car?", options: ["Small car", "Big car or SUV", "Pickup or truck", "I don't know"] },
   ],
-  "Oil, tires and battery": [
-    { q: "What kind of car?", options: ["Small car", "Big car or SUV", "Pickup or truck", "I don't know"] },
-    { q: "Where is the car now?", options: ["At my house", "At my work or shop", "Stuck on the road"] },
-  ],
   "Car wash": [
     { q: "Where?", options: ["At my house", "At the car wash place"] },
     { q: "Do you have water there?", options: ["Yes, I have water", "Bring water", "Not sure"] },
   ],
-  "Motorbike and keke": [
-    { q: "What is it?", options: ["Motorbike", "Keke", "Tricycle"] },
-    { q: "Does it start?", options: ["Yes, it starts", "No, it does not start"] },
-    { q: "What is wrong?", options: ["It will not start", "Engine problem", "Brakes", "The chain", "Just check the whole thing"] },
+  "Care for old or sick": [
+    { q: "Where?", options: ["At home", "At the hospital"] },
+    { q: "For how long?", options: ["In the day only", "Day and night", "A few hours"] },
+  ],
+  "Carpentry and welding": [
+    { q: "Make a new one, or fix the old one?", options: ["Make a new one", "Fix the old one"] },
+    { q: "Who brings the wood or metal?", options: ["I have the materials", "The worker should bring them", "Not sure"] },
+  ],
+  "Carpet and windows": [
+    { q: "What should be cleaned?", options: ["Carpet only", "Windows only", "Carpet and windows"] },
+    { q: "How big?", options: ["Small", "Medium", "Big"] },
+  ],
+  "Childcare": [
+    { q: "How many children?", options: ["1 child", "2 children", "3 or more children"] },
+    { q: "What ages?", options: ["Baby, under 2 years", "2 to 5 years", "6 to 12 years", "Teen"] },
+    { q: "Where will you watch them?", options: ["At my house", "At your house", "At school"] },
+  ],
+  "Computer and phone lessons": [
+    { q: "Who is learning?", options: ["A child", "A grown person", "An old person"] },
+    { q: "Where?", options: ["At my house", "By phone or online"] },
+  ],
+  "Computer repair": [
+    { q: "What is it?", options: ["Laptop", "Desktop computer", "Printer"] },
+    { q: "Does it turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
+  ],
+  "Concrete and floor work": [
+    { q: "How big is the work?", options: ["Small work", "Medium work", "Big work"] },
+    { q: "Do you have cement and sand?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
+  ],
+  "Cooking for people": [
+    { q: "For how many people?", options: ["My family only", "About 20 people", "About 50 people", "More than 50 people"] },
+    { q: "Who brings the food things?", options: ["I have them", "The cook should buy them", "We will talk about it"] },
+    { q: "Where will the cooking happen?", options: ["At my house", "At the event place", "Cook and bring the food"] },
+  ],
+  "Decoration": [
+    { q: "For what event?", options: ["Birthday", "Wedding", "Funeral", "Another party"] },
+  ],
+  "Deep cleaning": [
+    { q: "Where?", options: ["The whole house", "Kitchen and bathroom", "One part of the house"] },
+    { q: "How dirty is it?", options: ["Very dirty", "Not too dirty"] },
+    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  ],
+  "Design and photos": [
+    { q: "How do you want to get it?", options: ["Send it to my phone", "Print it for me", "Both"] },
+  ],
+  "Dish washing": [
+    { q: "For what?", options: ["For an event", "For my house"] },
+    { q: "How many dishes?", options: ["A small pile", "A medium pile", "A big pile"] },
+  ],
+  "Door repairs": [
+    { q: "Which door?", options: ["Front door", "Room door", "Bathroom door", "Gate"] },
+    { q: "What is wrong?", options: ["Will not close", "Handle is broken", "Hinge is broken", "Lock is bad"] },
   ],
   "Driver": [
     { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
     { q: "Where to?", options: ["Inside the same town", "To another town", "Many places"] },
   ],
-  "Towing": [
-    { q: "What vehicle?", options: ["Small car", "Big car or SUV", "Pickup or truck", "Motorbike"] },
+  "Emergency help": [
+    { q: "Where are you?", options: ["At my house", "At my shop or office", "On the road"] },
+  ],
+  "Errands": [
     { q: "How far?", options: ["Inside the same town", "To another town"] },
+    { q: "Is everything ready for the errand?", options: ["Yes, all ready", "I will explain on the phone"] },
+  ],
+  "Escort and trip guard": [
+    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
+    { q: "How far?", options: ["Inside the same town", "To another town"] },
+  ],
+  "Event cleaning": [
+    { q: "When?", options: ["Before the event", "During the event", "After the event"] },
+    { q: "How big is the place?", options: ["Small", "Medium", "Big"] },
+  ],
+  "Event food and cleanup": [
+    { q: "How many people are coming?", options: ["About 20 people", "About 50 people", "About 100 people", "More than 100 people"] },
+  ],
+  "Event security": [
+    { q: "How many guards?", options: ["1 guard", "2 guards", "3 or more guards"] },
+  ],
+  "Fans, stove and machines": [
+    { q: "Does it turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
+    { q: "What is wrong with it?", options: ["It works badly", "It makes a bad sound", "It stopped completely"] },
+  ],
+  "Farm work": [
+    { q: "How big is the land?", options: ["A small piece", "A medium piece", "Big land"] },
+    { q: "Who brings the tools?", options: ["I have tools", "The worker should bring them", "Not sure"] },
+  ],
+  "Fence and compound": [
+    { q: "How big is the place?", options: ["Small yard", "Medium yard", "Big yard"] },
+    { q: "Who brings the materials?", options: ["I have them", "The worker should bring them", "Not sure"] },
+  ],
+  "Fitness": [
+    { q: "Where?", options: ["At my house", "Outside or at a gym"] },
+  ],
+  "Floor cleaning": [
+    { q: "What floor?", options: ["Tiles", "Concrete", "Wood"] },
+    { q: "How big?", options: ["Small", "Medium", "Big"] },
+  ],
+  "Fridge and freezer": [
+    { q: "What is wrong with it?", options: ["It is not cooling", "Too much ice", "It makes a bad sound", "It will not turn on", "It is leaking"] },
+  ],
+  "Furniture assembly": [
+    { q: "How many pieces?", options: ["1 piece", "2 to 3 pieces", "Many pieces"] },
+    { q: "Do you have tools?", options: ["Yes, I have tools", "No, bring tools", "Not sure"] },
+  ],
+  "Furniture repairs": [
+    { q: "Make it strong again, or make a new one?", options: ["Fix the old one", "Make a new one"] },
+    { q: "Who brings the wood?", options: ["I have the wood", "The worker should bring wood", "Not sure"] },
+  ],
+  "Gate and fence repairs": [
+    { q: "What is wrong?", options: ["It will not open or close", "The hinge is broken", "Part of it fell down", "Make a new part"] },
+  ],
+  "Generator buying help": [
+    { q: "New or used?", options: ["Brand new", "Used", "Not sure"] },
+    { q: "What will it power?", options: ["Lights and fan only", "TV and fridge too", "The whole house"] },
+  ],
+  "Generator for an event": [
+    { q: "For how long?", options: ["A few hours", "The whole day", "One night"] },
+    { q: "Who brings the fuel?", options: ["I have fuel", "Bring fuel", "Not sure"] },
+  ],
+  "Generator fuel": [
+    { q: "How much fuel?", options: ["5 gallons", "10 gallons", "25 gallons", "A full drum"] },
+    { q: "What fuel?", options: ["Gasoline", "Diesel"] },
+  ],
+  "Generator install": [
+    { q: "Where?", options: ["At my house", "At my shop or office"] },
+    { q: "What switch?", options: ["Automatic changeover", "Manual switch", "Not sure"] },
   ],
   "Generator repair": [
     { q: "Does it start at all?", options: ["Yes, it starts", "No, it does not start"] },
@@ -421,197 +501,288 @@ const WORK_QUESTIONS: Record<string, WorkQ[]> = {
     { q: "How big is it?", options: ["Small generator", "Medium generator", "Big generator", "I don't know"] },
     { q: "When was it last serviced?", options: ["Not long ago", "Long time ago", "Never", "Not sure"] },
   ],
-  "Generator install": [
-    { q: "Where?", options: ["At my house", "At my shop or office"] },
-    { q: "What switch?", options: ["Automatic changeover", "Manual switch", "Not sure"] },
+  "Generator wiring": [
+    { q: "What switch?", options: ["Manual switch", "Automatic switch", "Not sure"] },
   ],
-  "Generator fuel": [
-    { q: "How much fuel?", options: ["5 gallons", "10 gallons", "25 gallons", "A full drum"] },
-    { q: "What fuel?", options: ["Gasoline", "Diesel"] },
+  "Go with me": [
+    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
+  ],
+  "Guards": [
+    { q: "Where?", options: ["A house", "A shop", "An event", "A building site"] },
+    { q: "For how long?", options: ["One night", "Every night", "Day and night"] },
   ],
   "Hair": [
     { q: "Where?", options: ["At my house", "At the salon or shop"] },
     { q: "Do you have the hair or extensions?", options: ["Yes, I have them", "No, bring hair", "Not sure"] },
   ],
-  "Barber": [
-    { q: "Where?", options: ["At my house", "At the barber shop"] },
+  "Hair for children": [
+    { q: "How many children?", options: ["1 child", "2 children", "3 or more children"] },
+    { q: "Where?", options: ["At my house", "At the salon or shop"] },
+  ],
+  "Hand pump": [
+    { q: "What is wrong?", options: ["It will not bring water", "The handle is broken", "The water is dirty", "Put in a new one"] },
+  ],
+  "House cleaning": [
+    { q: "How many rooms?", options: ["1 room", "2 rooms", "3 rooms", "4 rooms", "The whole house"] },
+    { q: "One time, or again and again?", options: ["One time only", "Every week", "Every two weeks", "Every month"] },
+    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  ],
+  "House sitting and pets": [
+    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
+    { q: "What animal?", options: ["A dog", "A cat", "Goats or chickens", "No animal, the house only"] },
+  ],
+  "Keke and bike delivery": [
+    { q: "How big is the load?", options: ["Small", "Medium", "Big or heavy"] },
+    { q: "How far?", options: ["Inside the same town", "To another town"] },
+  ],
+  "Kitchen cleaning": [
+    { q: "What should be cleaned?", options: ["The whole kitchen", "Stove and oven", "Fridge inside", "Walls and cabinets"] },
+    { q: "Do you have cleaning things and soap?", options: ["Yes, I have them", "No, bring cleaning things", "Not sure"] },
+  ],
+  "Laundry and ironing": [
+    { q: "How much?", options: ["1 bag", "2 bags", "3 or more bags"] },
+    { q: "Where?", options: ["Come to my house", "I will bring the clothes"] },
+  ],
+  "Lights": [
+    { q: "How many lights?", options: ["1 light", "2 to 3 lights", "Many lights"] },
+    { q: "Where?", options: ["One room", "The whole house", "Outside"] },
+  ],
+  "Locks": [
+    { q: "New lock, or fix the old one?", options: ["Put in a new lock", "Fix the old lock", "Change the lock"] },
+    { q: "How many locks?", options: ["1 lock", "2 locks", "3 or more locks"] },
+  ],
+  "Long distance moving": [
+    { q: "Do you need a truck?", options: ["Yes, I need a truck", "No, I have a truck"] },
+    { q: "How much load?", options: ["A small load", "A medium load", "A full truck"] },
+  ],
+  "Maid and house help": [
+    { q: "For how long?", options: ["One day", "One week", "A long time"] },
+    { q: "Live in, or come and go?", options: ["Come and go every day", "Stay at the house"] },
   ],
   "Makeup and nails": [
     { q: "For what?", options: ["A wedding", "A party or event", "Photos", "Just for me"] },
     { q: "How many people?", options: ["Just me", "2 to 3 people", "Many people"] },
   ],
+  "Market and pharmacy runs": [
+    { q: "Which market?", options: ["Duala Market", "Waterside", "Red Light", "Paynesville", "Another market"] },
+    { q: "Is your list ready?", options: ["Yes, I have a list", "I will say it on the phone"] },
+  ],
+  "Masonry": [
+    { q: "How big is the job?", options: ["Small job", "Medium job", "Big job"] },
+    { q: "Do you have blocks and cement?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
+  ],
   "Massage and spa": [
     { q: "Where?", options: ["At my house", "At the spa"] },
+  ],
+  "Meter and LEC": [
+    { q: "What is happening?", options: ["No current at all", "Current comes and goes", "The meter is not working", "New connection"] },
+  ],
+  "Money and records": [
+    { q: "For how long?", options: ["One day of work", "Many days of work"] },
+  ],
+  "Motorbike and keke": [
+    { q: "What is it?", options: ["Motorbike", "Keke", "Tricycle"] },
+    { q: "Does it start?", options: ["Yes, it starts", "No, it does not start"] },
+    { q: "What is wrong?", options: ["It will not start", "Engine problem", "Brakes", "The chain", "Just check the whole thing"] },
+  ],
+  "Mounting and installing": [
+    { q: "Where?", options: ["Inside the house", "Outside"] },
+    { q: "What are the walls?", options: ["Block walls", "Wood walls", "Not sure"] },
+  ],
+  "Moving help": [
+    { q: "How far?", options: ["Inside the same town", "To another town"] },
+    { q: "Are there stairs to carry things on?", options: ["No stairs", "Yes, there are stairs", "I don't know"] },
+    { q: "Do you need a truck?", options: ["Yes, I need a truck", "No, I have a truck", "No truck needed"] },
+  ],
+  "Music and driving lessons": [
+    { q: "Who is learning?", options: ["A child", "A grown person"] },
+  ],
+  "Music and hosting": [
+    { q: "For how long?", options: ["2 hours", "4 hours", "The whole event"] },
+  ],
+  "New pipes and water lines": [
+    { q: "Where will the water go?", options: ["Kitchen", "Bathroom", "The whole house", "Outside tap"] },
+    { q: "Do you have the pipes?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
+  ],
+  "Night watch": [
+    { q: "Where?", options: ["A house", "A shop", "A yard or warehouse"] },
+  ],
+  "Office cleaning": [
+    { q: "How big is the place?", options: ["Small office or shop", "Medium", "Big"] },
+    { q: "How often?", options: ["One time only", "Every day", "Every week"] },
+  ],
+  "Office help": [
+    { q: "How much work?", options: ["Small work", "One day of work", "Many days of work"] },
+  ],
+  "Oil, tires and battery": [
+    { q: "What kind of car?", options: ["Small car", "Big car or SUV", "Pickup or truck", "I don't know"] },
+    { q: "Where is the car now?", options: ["At my house", "At my work or shop", "Stuck on the road"] },
+  ],
+  "Package and food delivery": [
+    { q: "How far?", options: ["Inside Monrovia", "Outside Monrovia", "To another town"] },
+    { q: "How big is it?", options: ["Small", "Medium", "Big or heavy"] },
+  ],
+  "Painting": [
+    { q: "Who brings the paint?", options: ["I have the paint", "The worker should bring paint", "Not sure"] },
+    { q: "Do the walls need fixing first?", options: ["Yes, scrape and fill the walls first", "No, just paint"] },
+  ],
+  "Personal assistant": [
+    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
+  ],
+  "Phone repair": [
+    { q: "Does the phone turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
+    { q: "Did it fall in water?", options: ["Yes, it fell in water", "No water"] },
+  ],
+  "Phone setup and accounts": [
+    { q: "What phone?", options: ["Android phone", "iPhone", "Small button phone", "Not sure"] },
+  ],
+  "Photo and video": [
+    { q: "For how long?", options: ["1 hour", "3 hours", "The whole event"] },
+  ],
+  "Pipes and leaks": [
+    { q: "Where is the leak?", options: ["Kitchen", "Bathroom", "Outside", "Under the ground"] },
+    { q: "Is water still running?", options: ["Yes, water is running", "I turned the water off", "Not sure"] },
+    { q: "Do you have the parts it needs?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
+  ],
+  "Printing and typing": [
+    { q: "How many?", options: ["A few pages", "Many pages", "One big item"] },
+    { q: "Is it ready to print?", options: ["Yes, it is on my phone", "I will bring the paper copy", "Not yet"] },
+  ],
+  "Professionals": [
+    { q: "How do you want to meet?", options: ["At their office", "At my house", "By phone"] },
+  ],
+  "Reading and languages": [
+    { q: "Who is learning?", options: ["A child", "A grown person"] },
+    { q: "Where?", options: ["At my house", "By phone or online"] },
+  ],
+  "Roofing": [
+    { q: "How bad is it?", options: ["Small leak", "Big leak", "The whole roof"] },
+    { q: "Do you have zinc sheets?", options: ["Yes, I have zinc", "No, the worker should bring zinc", "Not sure"] },
+  ],
+  "School and church cleaning": [
+    { q: "How big is the place?", options: ["Small", "Medium", "Big"] },
+    { q: "How often?", options: ["One time only", "Every week", "After every program"] },
   ],
   "School tutoring": [
     { q: "Who is learning?", options: ["A primary school child", "A junior high student", "A senior high student", "A WAEC student"] },
     { q: "Where?", options: ["At my house", "By phone or online"] },
     { q: "How often?", options: ["One time", "Every week", "Every day"] },
   ],
-  "Reading and languages": [
-    { q: "Who is learning?", options: ["A child", "A grown person"] },
-    { q: "Where?", options: ["At my house", "By phone or online"] },
+  "Septic and digging": [
+    { q: "Dig a new one, or work on the old one?", options: ["Dig a new one", "Empty the old one", "Fix the old one"] },
+    { q: "How big?", options: ["Small", "Medium", "Big"] },
   ],
-  "Computer and phone lessons": [
-    { q: "Who is learning?", options: ["A child", "A grown person", "An old person"] },
-    { q: "Where?", options: ["At my house", "By phone or online"] },
+  "Septic and soak pit": [
+    { q: "What is happening?", options: ["It is full", "Bad smell", "Water backs up", "Just check it"] },
   ],
-  "Music and driving lessons": [
-    { q: "Who is learning?", options: ["A child", "A grown person"] },
+  "Shopping help": [
+    { q: "Is your list ready?", options: ["Yes, I have a list", "I will say it on the phone"] },
   ],
-  "Masonry": [
-    { q: "How big is the job?", options: ["Small job", "Medium job", "Big job"] },
-    { q: "Do you have blocks and cement?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
+  "Shower and bathroom": [
+    { q: "Fix it, or put in a new one?", options: ["Fix it", "Put in a new one"] },
+  ],
+  "Sink and drain": [
+    { q: "Where?", options: ["Kitchen", "Bathroom", "Outside"] },
+    { q: "How bad is it?", options: ["Slow", "Fully blocked", "Water coming back up"] },
+  ],
+  "Skin and facial": [
+    { q: "Where?", options: ["At my house", "At the salon or shop"] },
+  ],
+  "Small repairs": [
+    { q: "How many things?", options: ["1 thing", "2 to 3 things", "Many things"] },
+    { q: "Who brings the materials?", options: ["I have them", "The worker brings them", "Not sure"] },
+  ],
+  "Social media and marketing": [
+    { q: "Which one?", options: ["Instagram", "TikTok", "Facebook", "All of them"] },
+  ],
+  "Sockets and switches": [
+    { q: "How many?", options: ["1", "2 to 3", "Many"] },
+    { q: "What happened?", options: ["Stopped working", "Sparking", "Broken", "Put in new ones"] },
+  ],
+  "Sofa and mattress cleaning": [
+    { q: "What should be cleaned?", options: ["Sofa", "Mattress", "Sofa and mattress", "Chairs and cushions"] },
+  ],
+  "Solar and inverter": [
+    { q: "What should it power?", options: ["Lights and fan only", "TV and fridge too", "The whole house"] },
+    { q: "Do you have panels or a battery?", options: ["I have everything", "I have some things", "I have nothing yet"] },
+  ],
+  "TV and home electronics": [
+    { q: "Does it turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
+    { q: "What is wrong with it?", options: ["No picture", "No sound", "It works badly", "It stopped completely"] },
   ],
   "Tiles and finishing": [
     { q: "Where?", options: ["Bathroom", "Kitchen", "Living room", "The whole house"] },
     { q: "Do you have the tiles?", options: ["Yes, I have tiles", "No, the worker should bring tiles", "Not sure"] },
   ],
-  "Painting": [
-    { q: "Who brings the paint?", options: ["I have the paint", "The worker should bring paint", "Not sure"] },
-    { q: "Do the walls need fixing first?", options: ["Yes, scrape and fill the walls first", "No, just paint"] },
+  "Toilet": [
+    { q: "What is wrong?", options: ["Blocked", "Will not flush", "Leaking", "Put in a new one"] },
+    { q: "If it is blocked, how bad?", options: ["Water still goes down small", "Fully blocked", "Water is coming back up"] },
   ],
-  "Roofing": [
-    { q: "How bad is it?", options: ["Small leak", "Big leak", "The whole roof"] },
-    { q: "Do you have zinc sheets?", options: ["Yes, I have zinc", "No, the worker should bring zinc", "Not sure"] },
+  "Towing": [
+    { q: "What vehicle?", options: ["Small car", "Big car or SUV", "Pickup or truck", "Motorbike"] },
+    { q: "How far?", options: ["Inside the same town", "To another town"] },
   ],
-  "Carpentry and welding": [
-    { q: "Make a new one, or fix the old one?", options: ["Make a new one", "Fix the old one"] },
-    { q: "Who brings the wood or metal?", options: ["I have the materials", "The worker should bring them", "Not sure"] },
+  "Trash and compound cleaning": [
+    { q: "How much trash?", options: ["A small pile", "A medium pile", "A big pile"] },
+    { q: "Do you have bags and tools?", options: ["Yes, I have them", "No, bring them", "Not sure"] },
   ],
-  "Septic and digging": [
-    { q: "Dig a new one, or work on the old one?", options: ["Dig a new one", "Empty the old one", "Fix the old one"] },
-    { q: "How big?", options: ["Small", "Medium", "Big"] },
+  "Tree work": [
+    { q: "How big is the tree?", options: ["Small tree", "Medium tree", "Big tree"] },
+    { q: "Who brings the tools?", options: ["I have tools", "The worker should bring tools"] },
   ],
-  "Emergency help": [
-    { q: "Where are you?", options: ["At my house", "At my shop or office", "On the road"] },
+  "Truck hire": [
+    { q: "What will it carry?", options: ["Sand or gravel", "Building materials", "Furniture and house things", "Farm things", "Other heavy things"] },
+    { q: "How far?", options: ["Inside the same town", "To another town"] },
   ],
-  "Fridge and freezer": [
-    { q: "What is wrong with it?", options: ["It is not cooling", "Too much ice", "It makes a bad sound", "It will not turn on", "It is leaking"] },
+  "Ushers and program help": [
+    { q: "How many people are coming?", options: ["About 20 people", "About 50 people", "About 100 people", "More than 100 people"] },
+    { q: "How many ushers?", options: ["2 ushers", "4 ushers", "More than 4 ushers"] },
   ],
-  "Air conditioning": [
-    { q: "What is wrong with it?", options: ["Not cold", "Leaking water", "Will not turn on", "Just service it"] },
-    { q: "How many ACs?", options: ["1 AC", "2 ACs", "3 or more ACs"] },
-  ],
-  "Fans, stove and machines": [
+  "Washing machine": [
     { q: "Does it turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
-    { q: "What is wrong with it?", options: ["It works badly", "It makes a bad sound", "It stopped completely"] },
   ],
-  "Childcare": [
-    { q: "How many children?", options: ["1 child", "2 children", "3 or more children"] },
-    { q: "What ages?", options: ["Baby, under 2 years", "2 to 5 years", "6 to 12 years", "Teen"] },
-    { q: "Where will you watch them?", options: ["At my house", "At your house", "At school"] },
+  "Water delivery": [
+    { q: "How much water?", options: ["A little", "500 gallons", "1 full tank", "More than 1 tank"] },
   ],
-  "Care for old or sick": [
-    { q: "Where?", options: ["At home", "At the hospital"] },
-    { q: "For how long?", options: ["In the day only", "Day and night", "A few hours"] },
+  "Water tank and pump": [
+    { q: "How big is the tank?", options: ["Small tank", "500 gallons", "1000 gallons", "I don't know"] },
+    { q: "Where will the tank go?", options: ["On the ground", "Up on a stand", "On the roof"] },
   ],
-  "Maid and house help": [
-    { q: "For how long?", options: ["One day", "One week", "A long time"] },
-    { q: "Live in, or come and go?", options: ["Come and go every day", "Stay at the house"] },
+  "Water tank work": [
+    { q: "How big is the tank?", options: ["Small tank", "500 gallons", "1000 gallons", "I don't know"] },
   ],
-  "Cooking for people": [
-    { q: "For how many people?", options: ["My family only", "About 20 people", "About 50 people", "More than 50 people"] },
-    { q: "Who brings the food things?", options: ["I have them", "The cook should buy them", "We will talk about it"] },
-    { q: "Where will the cooking happen?", options: ["At my house", "At the event place", "Cook and bring the food"] },
-  ],
-  "House sitting and pets": [
-    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
-    { q: "What animal?", options: ["A dog", "A cat", "Goats or chickens", "No animal, the house only"] },
-  ],
-  "Phone repair": [
-    { q: "Does the phone turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
-    { q: "Did it fall in water?", options: ["Yes, it fell in water", "No water"] },
-  ],
-  "Computer repair": [
-    { q: "What is it?", options: ["Laptop", "Desktop computer", "Printer"] },
-    { q: "Does it turn on?", options: ["Yes, it turns on", "No, it does not turn on"] },
+  "Wells and boreholes": [
+    { q: "What is the water like now?", options: ["Small water", "No water at all", "The well is dirty"] },
   ],
   "WiFi and network": [
     { q: "New one, or fix the one you have?", options: ["Put in a new one", "Fix the one I have", "Set up a phone or router"] },
   ],
-  "CCTV and TV": [
-    { q: "What do you need?", options: ["Cameras", "TV or dish", "Both"] },
-    { q: "How many cameras?", options: ["1 camera", "2 to 4 cameras", "More than 4 cameras"] },
-  ],
-  "Design and photos": [
-    { q: "How do you want to get it?", options: ["Send it to my phone", "Print it for me", "Both"] },
-  ],
-  "Social media and marketing": [
-    { q: "Which one?", options: ["Instagram", "TikTok", "Facebook", "All of them"] },
-  ],
-  "Office help": [
-    { q: "How much work?", options: ["Small work", "One day of work", "Many days of work"] },
-  ],
-  "Errands": [
-    { q: "How far?", options: ["Inside the same town", "To another town"] },
-    { q: "Is everything ready for the errand?", options: ["Yes, all ready", "I will explain on the phone"] },
-  ],
-  "Personal assistant": [
-    { q: "For how long?", options: ["A few hours", "The whole day", "Many days"] },
-  ],
-  "Fitness": [
-    { q: "Where?", options: ["At my house", "Outside or at a gym"] },
-  ],
-  "Canopy, chairs and setup": [
-    { q: "For what event?", options: ["Birthday", "Wedding", "Funeral", "Church program", "Another party"] },
-    { q: "How many chairs?", options: ["About 20 chairs", "About 50 chairs", "About 100 chairs", "More than 100 chairs"] },
-  ],
-  "Decoration": [
-    { q: "For what event?", options: ["Birthday", "Wedding", "Funeral", "Another party"] },
-  ],
-  "Music and hosting": [
-    { q: "For how long?", options: ["2 hours", "4 hours", "The whole event"] },
-  ],
-  "Photo and video": [
-    { q: "For how long?", options: ["1 hour", "3 hours", "The whole event"] },
-  ],
-  "Event food and cleanup": [
-    { q: "How many people are coming?", options: ["About 20 people", "About 50 people", "About 100 people", "More than 100 people"] },
-  ],
-  "Event security": [
-    { q: "How many guards?", options: ["1 guard", "2 guards", "3 or more guards"] },
-  ],
-  "Guards": [
-    { q: "Where?", options: ["A house", "A shop", "An event", "A building site"] },
-    { q: "For how long?", options: ["One night", "Every night", "Day and night"] },
-  ],
-  "Night watch": [
-    { q: "Where?", options: ["A house", "A shop", "A yard or warehouse"] },
+  "Wiring": [
+    { q: "How big is the work?", options: ["1 room", "The whole house", "One part of the house"] },
+    { q: "Current from where?", options: ["LEC", "Generator", "LEC and generator", "Solar"] },
   ],
   "Yard work": [
     { q: "How big is the yard?", options: ["Small yard", "Medium yard", "Big yard or farm"] },
     { q: "Who brings the tools?", options: ["I have tools", "The worker should bring tools"] },
   ],
-  "Farm work": [
-    { q: "How big is the land?", options: ["A small piece", "A medium piece", "Big land"] },
-    { q: "Who brings the tools?", options: ["I have tools", "The worker should bring them", "Not sure"] },
-  ],
-  "Animals and poultry": [
-    { q: "What animal?", options: ["Chickens", "Goats", "Pigs", "Other animals"] },
-    { q: "For how long?", options: ["One day", "Every day", "Many days"] },
-  ],
-  "Water delivery": [
-    { q: "How much water?", options: ["A little", "500 gallons", "1 full tank", "More than 1 tank"] },
-  ],
-  "Wells and boreholes": [
-    { q: "What is the water like now?", options: ["Small water", "No water at all", "The well is dirty"] },
-  ],
-  "Professionals": [
-    { q: "How do you want to meet?", options: ["At their office", "At my house", "By phone"] },
-  ],
-  "Other": [
-    { q: "Say in your own words exactly what you need", text: true, required: true, placeholder: "Write what you need" },
-    { q: "How big is the job?", options: ["Small job", "Medium job", "Big job"] },
-  ],
 };
+
 const GENERIC_QUESTIONS: WorkQ[] = [
   { q: "How big is the job?", options: ["Small job", "Medium job", "Big job"] },
   { q: "Do you have the things the work needs?", options: ["Yes, I have them", "No, the worker should bring them", "Not sure"] },
 ];
+
 function questionsFor(serviceName: string): WorkQ[] {
   return WORK_QUESTIONS[serviceName] ?? GENERIC_QUESTIONS;
 }
+
+/* The questions for a work the person names themselves through
+   Other: they must say in their own words exactly what they
+   need, and that path has no Skip. */
+const OTHER_QUESTIONS: WorkQ[] = [
+  { q: "Say in your own words exactly what you need", text: true, required: true, placeholder: "Write what you need" },
+  { q: "How big is the job?", options: ["Small job", "Medium job", "Big job"] },
+];
 
 /* ---------- fuzzy search: spelling does not have to be right ---------- */
 function norm(s: string): string {
@@ -1051,13 +1222,13 @@ function ProfileScore({ profileId, role }: { profileId: number; role: "worker" |
    top-to-bottom list flow. */
 /** The JackWork wordmark from the finished logo: the word alone,
    bold, in the logo's glow red, in the top right corner a little
-   down from the top edge — but rendered as part of the BACKGROUND,
+   down from the top edge, but rendered as part of the BACKGROUND,
    not as print on top of the screen. It sits in the background
    layer (z-0, first in its container, so every glass panel and
    control paints over it), at partial strength, blended into the
    red background washes and softened at the edges (see
    .brand-mark-behind in theme.css), like the word is formed out
-   of the glow itself. It is NOT a header or a bar — it never
+   of the glow itself. It is NOT a header or a bar, it never
    blocks a tap and never pushes content. Shown only on the entry
    screens: the three sign-in screens and the signed-in start
    screen. */
@@ -1509,8 +1680,8 @@ function searchPlaceNames(names: string[], query: string): string[] {
 /* PLACE-SEARCH-END */
 
 /* Coordinates for a place saved before the real data loaded:
-   match its saved words against the real records by exact name —
-   the community first, then the town — preferring the same
+   match its saved words against the real records by exact name,
+   the community first, then the town, preferring the same
    county when it is known. No match means no coordinates: the
    place still displays and filters by its saved words, and the
    person can re-pick it from the real list any time in Profile. */
@@ -1728,7 +1899,7 @@ function PlacePicker({
 
 
 /* ================================================================
-   SIGN IN — name, then phone, then code. One thing per screen.
+   SIGN IN, name, then phone, then code. One thing per screen.
    A new person picks Worker or User and agrees to that set of
    terms, then says where they live with the stepped place
    picker, and one short house description. The phone number is
@@ -1984,7 +2155,7 @@ function TermsGateFlow({
 }
 
 /* ================================================================
-   NOTIFICATIONS — one list, newest first, one line each. A red
+   NOTIFICATIONS, one list, newest first, one line each. A red
    dot marks the ones not yet seen; opening this list marks them
    seen on the server, so the dots are gone next time. Tapping a
    notification opens that job. Phone notifications (Web Push)
@@ -2243,7 +2414,7 @@ function NotificationsFlow({
 }
 
 /* ================================================================
-   CALL IN — one screen, one thing: a short detail in plain
+   CALL IN, one screen, one thing: a short detail in plain
    words. Call in is not available yet; later a person will
    answer, tell you what to do, or do it for you. The number is
    the single CALL_IN_NUMBER value; while none is set, the
@@ -2287,7 +2458,7 @@ function CallInScreen({ onBack }: { onBack: () => void }) {
 }
 
 /* ================================================================
-   POST A JOB — one thing per screen:
+   POST A JOB, one thing per screen:
    search or pick the kind of work, then the service, then the
    exact job. Then ONE details screen with that work's own short
    questions as tap answers (all optional, all on the one screen).
@@ -2299,7 +2470,7 @@ function CallInScreen({ onBack }: { onBack: () => void }) {
    on the person's profile automatically.
    ================================================================ */
 type PostStage =
-  | "pick" | "group" | "service" | "ask"
+  | "pick" | "group" | "service" | "name" | "ask"
   | "day" | "time" | "pay" | "note" | "check";
 
 function PostWizard({
@@ -2317,13 +2488,17 @@ function PostWizard({
   const [group, setGroup] = useState<string | null>(null);
   const [service, setService] = useState<string | null>(null);
   const [task, setTask] = useState<string | null>(null);
+  // Other: work that is not on the list. The person names it
+  // themselves, and the job posts under that name, never Other.
+  const [customFrom, setCustomFrom] = useState<"pick" | "group" | "service" | null>(null);
+  const [otherName, setOtherName] = useState("");
   // the work's own detail questions: all on ONE screen, all tap
   // answers, all optional. The answers join the posting.
   const [answers, setAnswers] = useState<string[]>([]);
   // the exact day (YYYY-MM-DD) the person taps on the calendar, and
   // the exact time built from three big taps: the hour (1 to 12),
   // the minutes (:00, :15, :30, :45), and AM or PM. The parts stay
-  // null until picked, and posting requires the whole time —
+  // null until picked, and posting requires the whole time,
   // except Need It NOW jobs, which mean right now.
   const [schedDate, setSchedDate] = useState<string | null>(null);
   const [schedHour, setSchedHour] = useState<number | null>(null);
@@ -2362,7 +2537,7 @@ function PostWizard({
   // (only possible when the picked day is today).
   const schedInPast = schedDate != null && schedTime != null && !isFutureSlot(schedDate, schedTime);
 
-  const workQuestions = service ? questionsFor(service) : [];
+  const workQuestions = customFrom ? OTHER_QUESTIONS : service ? questionsFor(service) : [];
   const detailText = workQuestions
     .map((q, i) => (answers[i]?.trim() ? `${q.q} ${answers[i]!.trim()}` : ""))
     .filter(Boolean)
@@ -2385,6 +2560,8 @@ function PostWizard({
   }
 
   function chooseTask(svc: ServiceDef, t: string | null) {
+    setCustomFrom(null);
+    setOtherName("");
     setService(svc.name);
     setTask(t);
     setAnswers([]);
@@ -2397,12 +2574,41 @@ function PostWizard({
     setStage("ask");
   }
 
+  function startOther(from: "pick" | "group" | "service") {
+    setCustomFrom(from);
+    setOtherName("");
+    setAnswers([]);
+    setSchedDate(null);
+    setSchedHour(null);
+    setSchedMinute(null);
+    setSchedAmpm(null);
+    const n = new Date();
+    setCalMonth({ y: n.getFullYear(), m: n.getMonth() });
+    setStage("name");
+  }
+
+  function confirmOtherName() {
+    const name = otherName.trim();
+    if (name.length < 3) return;
+    if (customFrom === "service") {
+      // The service stays; the typed name is the exact job.
+      setTask(name);
+    } else {
+      // The typed name is the work itself.
+      setService(name);
+      setTask(null);
+    }
+    setAnswers([]);
+    setStage("ask");
+  }
+
   function backFrom(stageNow: PostStage): () => void {
     switch (stageNow) {
       case "pick": return onExit;
       case "group": return () => setStage("pick");
       case "service": return () => setStage("group");
-      case "ask": return () => setStage(activeService ? "service" : "pick");
+      case "name": return () => setStage(customFrom === "service" ? "service" : customFrom === "group" ? "group" : "pick");
+      case "ask": return customFrom ? () => setStage("name") : () => setStage(activeService ? "service" : "pick");
       case "day": return () => setStage("ask");
       case "time": return () => setStage("day");
       case "pay": return () => setStage(isEmergency ? "ask" : "time");
@@ -2432,7 +2638,7 @@ function PostWizard({
     setBusy(true);
     try {
       const placeCoords = profilePlaceCoords(profile);
-      const title = task ?? `${service} needed`;
+      const title = task ?? (customFrom ? (service ?? "") : `${service} needed`);
       const descriptionParts = [
         `${service}${task ? `: ${task}` : ""}.`,
         detailText ? `Details: ${detailText}.` : "",
@@ -2564,12 +2770,13 @@ function PostWizard({
             ))}
           </div>
         ) : (
+          <>
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {SERVICE_GROUPS.map((g) => (
               <button
                 key={g.name}
                 type="button"
-                onClick={() => { setGroup(g.name); setStage("group"); }}
+                onClick={() => { setCustomFrom(null); setOtherName(""); setGroup(g.name); setStage("group"); }}
                 className="glass flex flex-col items-center justify-center gap-2.5 p-4 text-center active:opacity-80"
                 style={{ borderRadius: 12, minHeight: 132 }}
                 aria-label={`Pick ${g.name}`}
@@ -2581,6 +2788,15 @@ function PostWizard({
               </button>
             ))}
           </div>
+          <div className="mt-3">
+            <PickRow
+              label="Other work"
+              icon={<ServiceIcon icon="toolbox" size={26} />}
+              onClick={() => startOther("pick")}
+              ariaLabel="Pick Other work"
+            />
+          </div>
+          </>
         )}
       </Screen>
     );
@@ -2596,10 +2812,16 @@ function PostWizard({
               key={s.name}
               label={s.name}
               icon={<ServiceIcon icon={s.icon} size={28} />}
-              onClick={() => { setService(s.name); setStage("service"); }}
+              onClick={() => { setCustomFrom(null); setOtherName(""); setService(s.name); setStage("service"); }}
               ariaLabel={`Pick ${s.name}`}
             />
           ))}
+          <PickRow
+            label="Other"
+            icon={<ServiceIcon icon="toolbox" size={28} />}
+            onClick={() => startOther("group")}
+            ariaLabel="Pick Other"
+          />
         </div>
       </Screen>
     );
@@ -2613,7 +2835,42 @@ function PostWizard({
           {activeService.tasks.map((t) => (
             <PickRow key={t} label={t} onClick={() => chooseTask(activeService, t)} ariaLabel={`Pick: ${t}`} />
           ))}
+          <PickRow label="Other" onClick={() => startOther("service")} ariaLabel="Pick Other" />
         </div>
+      </Screen>
+    );
+  }
+
+  /* Other: the work is not on the list, so the person names
+     it. Next stays off until the name has at least 3 letters,
+     and Back returns to the exact list they came from. */
+  if (stage === "name") {
+    const nameReady = otherName.trim().length >= 3;
+    return (
+      <Screen title="Name the work" onBack={backFrom("name")} layout="top">
+        <p className="mx-auto max-w-[300px] text-center text-base font-semibold text-[var(--dim)]">
+          This work is not on the list. Write the name of the work you need.
+        </p>
+        <div className="mx-auto mt-5 w-full max-w-[300px]">
+          <label className="sr-only" htmlFor="pw-other-name">Name of the work</label>
+          <input
+            id="pw-other-name"
+            value={otherName}
+            onChange={(e) => setOtherName(e.target.value)}
+            placeholder="Write the name of the work"
+            className={bigInputCls}
+            autoComplete="off"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={!nameReady}
+          onClick={confirmOtherName}
+          className="mx-auto mt-8 w-full max-w-[300px] py-4 text-xl font-black disabled:opacity-40"
+          style={primaryBtnStyle}
+        >
+          Next
+        </button>
       </Screen>
     );
   }
@@ -2681,7 +2938,7 @@ function PostWizard({
         >
           Next
         </button>
-        {!missingRequired && (
+        {!missingRequired && !customFrom && (
           <button
             type="button"
             onClick={() => { setAnswers([]); setStage(isEmergency ? "pay" : "day"); }}
@@ -2701,7 +2958,7 @@ function PostWizard({
      tapped, and the calendar stops about 3 months ahead so it
      stays simple. The tapped day is filled in solid, and the day
      in full words sits big under the calendar with the Next
-     button — no way past this screen without a day. */
+     button, no way past this screen without a day. */
   if (stage === "day") {
     const now = new Date();
     const todayKey = toDateKey(now);
@@ -2803,7 +3060,7 @@ function PostWizard({
      from 1 to 12, the minutes in quarter steps, then AM or PM.
      The whole picked moment sits big under the taps. If the day
      is today and the picked time has already passed, the screen
-     says so plainly and Next stays off — a past moment can never
+     says so plainly and Next stays off, a past moment can never
      be posted. No way past this screen without a full time. */
   if (stage === "time") {
     const pickBtn = (on: boolean): CSSProperties => ({
@@ -3053,7 +3310,7 @@ function WorkKindsGrid({ sel, onToggle }: { sel: string[]; onToggle: (name: stri
 }
 
 /* ================================================================
-   FIND WORK — one big board. Every open job is here right away,
+   FIND WORK, one big board. Every open job is here right away,
    once the person has said what work they can do. A person who
    has never answered (no saved kinds and never skipped) is asked
    "What job can you do?" first; after that, Find work opens
@@ -3190,7 +3447,7 @@ function BoardFlow({
       <Screen title="Categories" onBack={() => setShowCats(false)} layout="top">
         <p className="mb-4 text-base font-semibold text-[var(--dim)]">Pick the work you can do</p>
         <WorkKindsGrid sel={sel} onToggle={toggle} />
-        {/* Normal flow at the end of the list — NOT pinned to the
+        {/* Normal flow at the end of the list, NOT pinned to the
             bottom of the screen. A pinned solid band here was the
             stray bar/field sitting at the bottom of the app. */}
         <div className="mt-6 pb-2 pt-3">
@@ -3293,7 +3550,7 @@ function BoardFlow({
 }
 
 /* ================================================================
-   MY JOBS — posted or accepted, then a plain list of job names.
+   MY JOBS, posted or accepted, then a plain list of job names.
    ================================================================ */
 function MyJobsFlow({
   myPosted,
@@ -3380,7 +3637,7 @@ function MyJobsFlow({
 }
 
 /* ================================================================
-   ONE JOB — a single job on its own screen.
+   ONE JOB, a single job on its own screen.
    ================================================================ */
 type JobLifecycleAction = "confirmCall" | "proposePrice" | "acceptPrice" | "declinePrice" | "sendMoney" | "start" | "finish" | "confirmDone" | "problem";
 
@@ -4172,7 +4429,7 @@ function JobScreen({
 }
 
 /* ================================================================
-   RATE — one question: how was it?
+   RATE, one question: how was it?
    ================================================================ */
 function RateScreen({
   job,
@@ -4213,7 +4470,7 @@ function RateScreen({
 }
 
 /* ================================================================
-   PROFILE — only the person: picture, name, phone (it never
+   PROFILE, only the person: picture, name, phone (it never
    changes), where I live, Mobile Money, ID. No work categories
    here; those live in Find work.
    ================================================================ */
@@ -4518,7 +4775,7 @@ function ProfileFlow({
 }
 
 /* ================================================================
-   THE APP — full screen, one screen at a time.
+   THE APP, full screen, one screen at a time.
    The start screen only asks "What do you want to do?" with plain
    short labels: Post a job, Find work, My jobs, and the person's
    own profile row with their picture and phone number.
@@ -4895,7 +5152,7 @@ export function App() {
               </div>
             </div>
             {/* Small profile corner: just a small picture and the
-                first name, NO glass box, border, or shadow — a boxed
+                first name, NO glass box, border, or shadow, a boxed
                 chip here looked like a stray field sitting at the
                 bottom of the app. */}
             <button

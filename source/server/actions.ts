@@ -933,7 +933,7 @@ export const Actions = {
   }),
 
   listWorkers: defineAction({
-    description: "Lists people whose unified profile offers services, with completed job counts and average ratings from finished jobs. Browsing fields only: no phone numbers — contact details belong to the parties of an accepted job.",
+    description: "Lists people whose unified profile offers services, with completed job counts and average ratings from finished jobs. Browsing fields only: no phone numbers, contact details belong to the parties of an accepted job.",
     request: z.object({
       category: z.string().optional(),
       limit: z.number().int().positive().max(200).default(100),

@@ -65,9 +65,9 @@
      do not support color-mix drop the whole background
      declaration, which is exactly how light mode lost its red on
      a real phone while the audit browser (which supports it)
-     kept showing a wash. The light stops are strong — washed
+     kept showing a wash. The light stops are strong, washed
      over white, anything much under half strength reads as plain
-     white on a phone screen — while black text stays fully
+     white on a phone screen, while black text stays fully
      readable on top. The body::before washes below and the App
      root background use these stops and nothing else. */
   --glow-1: rgb(180 69 60 / 55%);
@@ -131,8 +131,8 @@
   }
   html, body { height: 100%; overscroll-behavior: none; }
   body { font-family: var(--font-body); background: var(--bg); }
-  /* Soft red washes behind everything — the background design
-     gradient — so the translucent glass fills have something to
+  /* Soft red washes behind everything, the background design
+     gradient, so the translucent glass fills have something to
      blur and read as real glass. Same smoothing red family as the
      selection highlight: deep and calm on black, and clearly red
      (not washed-out white) on white too. */
@@ -152,7 +152,7 @@
 }
 
 /* The JackWork wordmark lives IN the background, the same way the
-   red glow does — it is not print sitting on top of the screen.
+   red glow does, it is not print sitting on top of the screen.
    Partial strength, blended into the background washes (multiply
    sinks the red into white, screen lifts it into black), with the
    letter edges softened by a slight blur and a same-red halo, so

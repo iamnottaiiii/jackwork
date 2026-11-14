@@ -10,7 +10,7 @@ import icon512 from "./assets/jackwork-icon-512.png";
 /* The page icon is the owner's finished logo itself (the four soft
    red glows with JackWork in glow red at the top right, transparent
    background), resized from ~/workspace/jackwork/logo/
-   jackwork-logo-final.png — never redrawn. The empty inline icon in
+   jackwork-logo-final.png, never redrawn. The empty inline icon in
    index.html is replaced with it as soon as the bundle loads. */
 const faviconEl = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
 if (faviconEl) {
@@ -33,7 +33,7 @@ if (!rootEl) {
 // attribute on the outer div. The SDK styles select on
 // `.hatch-space-root[data-hatch-space-root]` to apply mobile safe-area
 // insets (notches, gesture bars, etc.), correct viewport sizing, and the
-// hosting header/chrome offsets — dropping either breaks layout silently.
+// hosting header/chrome offsets, dropping either breaks layout silently.
 createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={spaceQueryClient}>
